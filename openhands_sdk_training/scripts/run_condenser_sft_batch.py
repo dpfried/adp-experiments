@@ -72,7 +72,6 @@ def main() -> None:
                     max_tokens=args.max_tokens,
                     model=args.model,
                     dataset_name=args.dataset_name,
-                    include_trajectories=False,
                 )
             except Exception as exc:  # noqa: BLE001
                 failed += 1
