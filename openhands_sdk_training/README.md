@@ -21,7 +21,18 @@ The local run reached training successfully with 39,956 examples after cleaning
 and LLaMA-Factory filtering. It used about 20.2 GiB VRAM and ran at roughly
 3.36 seconds per step after ROCm warmup.
 
-## Layout
+## Local Layout
+
+Use the repository-level workspace convention:
+
+- Code and scripts: `~/work/adp/adp-experiments/openhands_sdk_training`
+- Downloaded ADP release files: `~/exp/adp/datasets/hf_release`
+- Standardized/full source files used by condenser experiments: `~/exp/adp/datasets/hf_std`
+- Paper-style train/eval splits: `~/exp/adp/datasets/paper_openhands_nonweb_v1`
+- Training logs and model outputs: `~/exp/adp/runs/openhands_sdk_training`
+- Shared Hugging Face cache: `~/exp/adp/cache/hf`
+
+## Script Layout
 
 - `scripts/setup_rocm_uv_env.sh`: create a uv virtual environment and install
   the training dependencies.
@@ -53,37 +64,37 @@ wandb login
 # Download the full ADP SFT release. This is large: about 33 GiB for all subsets.
 python scripts/download_adp_hf_release.py \
   --repo-id neulab/agent-data-collection \
-  --out ~/data/adp_openhands_sdk/hf_release \
+  --out ~/exp/adp/datasets/hf_release \
   --preset all
 
 # Build the OpenHands/SWE-Agent non-web train/eval split used in this run.
 python scripts/make_paper_splits.py \
-  --input-root ~/data/adp_openhands_sdk/hf_release \
-  --output-dir ~/data/adp_openhands_sdk/balanced_splits \
+  --input-root ~/exp/adp/datasets/hf_release \
+  --output-dir ~/exp/adp/datasets/paper_openhands_nonweb_v1 \
   --mixture openhands_nonweb
 
 # Validate/clean JSONL and neutralize literal <image>/<video>/<audio> tags.
 python scripts/clean_for_llamafactory.py \
-  --train ~/data/adp_openhands_sdk/balanced_splits/paper_openhands_nonweb_train.jsonl \
-  --eval ~/data/adp_openhands_sdk/balanced_splits/paper_openhands_nonweb_eval.jsonl
+  --train ~/exp/adp/datasets/paper_openhands_nonweb_v1/paper_openhands_nonweb_train.jsonl \
+  --eval ~/exp/adp/datasets/paper_openhands_nonweb_v1/paper_openhands_nonweb_eval.jsonl
 
 # Write LLaMA-Factory dataset metadata and the training YAML.
 python scripts/write_llamafactory_config.py \
-  --dataset-dir ~/data/adp_openhands_sdk/balanced_splits \
-  --output-dir ~/data/adp_openhands_sdk/balanced_splits/output/qwen35_0_8b_openhands_nonweb_full_10k_bs1_seq2048_mm_safe \
+  --dataset-dir ~/exp/adp/datasets/paper_openhands_nonweb_v1 \
+  --output-dir ~/exp/adp/runs/openhands_sdk_training/qwen35_0_8b_openhands_nonweb_full_10k_bs1_seq2048_mm_safe/output \
   --run-name adp-openhands-nonweb-qwen35-0.8b-full-10k-bs1-seq2048-mm-safe
 
 # Launch in the background.
 bash scripts/run_training.sh \
-  ~/data/adp_openhands_sdk/balanced_splits/qwen35_0_8b_openhands_nonweb_full_10k_bs1_seq2048_mm_safe.yaml \
-  ~/data/adp_openhands_sdk/balanced_splits/logs/train_10k_mm_safe
+  ~/exp/adp/datasets/paper_openhands_nonweb_v1/qwen35_0_8b_openhands_nonweb_full_10k_bs1_seq2048_mm_safe.yaml \
+  ~/exp/adp/runs/openhands_sdk_training/qwen35_0_8b_openhands_nonweb_full_10k_bs1_seq2048_mm_safe/logs/train_10k_mm_safe
 ```
 
 Monitor the run:
 
 ```bash
-bash scripts/monitor_training.sh ~/data/adp_openhands_sdk/balanced_splits/logs/train_10k_mm_safe
-tail -f ~/data/adp_openhands_sdk/balanced_splits/logs/train_10k_mm_safe.log
+bash scripts/monitor_training.sh ~/exp/adp/runs/openhands_sdk_training/qwen35_0_8b_openhands_nonweb_full_10k_bs1_seq2048_mm_safe/logs/train_10k_mm_safe
+tail -f ~/exp/adp/runs/openhands_sdk_training/qwen35_0_8b_openhands_nonweb_full_10k_bs1_seq2048_mm_safe/logs/train_10k_mm_safe.log
 ```
 
 ## Data Mixtures
