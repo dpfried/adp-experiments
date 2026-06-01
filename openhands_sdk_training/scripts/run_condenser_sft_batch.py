@@ -67,7 +67,7 @@ def main() -> None:
                 continue
             total += 1
             try:
-                records = process_row(
+                records = condensation_sft.process_row(
                     line,
                     max_tokens=args.max_tokens,
                     model=args.model,
