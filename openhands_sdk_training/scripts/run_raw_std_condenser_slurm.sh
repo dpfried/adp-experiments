@@ -173,6 +173,8 @@ fi
     agents/openhands_sdk/condensation_sft.py \
       --max-tokens 12000 \
       --model "$LLM_MODEL" \
+      --concurrency 8 \
+      --chunk-size 100 \
       < "$STD_JSONL"
 ) > "$CONDENSER_JSONL.tmp" 2> "$LOG_DIR/${DATASET}.openhands_sdk_condensation.stderr"
 cond_status=$?
