@@ -9,7 +9,7 @@ fi
 REPO=${ADP_REPO:-/home/gneubig/work/adp/agent-data-protocol-pr244}
 EXP_ROOT=${ADP_EXP_ROOT:-/home/gneubig/exp/adp}
 PYTHON=${ADP_PYTHON:-/home/gneubig/work/adp/agent-data-protocol-pr244/.venv/bin/python}
-OUT_ROOT=${ADP_OUT_ROOT:-$EXP_ROOT/datasets/software_agent_condenser_12k}
+OUT_ROOT=${ADP_OUT_ROOT:-$EXP_ROOT/datasets/software_agent_condenser_24k}
 OUT_DIR=$OUT_ROOT/$DATASET
 LOG_DIR=$OUT_ROOT/logs
 FULL_SFT_DIR=$OUT_DIR/full_sft
@@ -33,7 +33,7 @@ fi
 
 RAW_JSONL=$OUT_DIR/full_raw.jsonl
 STD_JSONL=$OUT_DIR/full_std.jsonl
-CONDENSER_JSONL=$FULL_SFT_DIR/full_sft_openhands_sdk_condensed_12k.jsonl
+CONDENSER_JSONL=$FULL_SFT_DIR/full_sft_openhands_sdk_condensed_24k.jsonl
 MANIFEST=$OUT_DIR/manifest.json
 
 started_at=$(date -Is)
@@ -42,37 +42,63 @@ echo "repo=$REPO"
 echo "out_dir=$OUT_DIR"
 echo "started_at=$started_at"
 echo "llm_model=$LLM_MODEL"
+echo "python=$PYTHON"
+repo_branch=$(git -C "$REPO" branch --show-current 2>/dev/null || true)
+repo_commit=$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || true)
+echo "repo_branch=$repo_branch"
+echo "repo_commit=$repo_commit"
+EXPECTED_ADP_BRANCH=${ADP_EXPECTED_BRANCH:-main}
+if [ -n "$EXPECTED_ADP_BRANCH" ] && [ "$repo_branch" != "$EXPECTED_ADP_BRANCH" ]; then
+  echo "Expected ADP repo branch $EXPECTED_ADP_BRANCH, got $repo_branch" >&2
+  exit 1
+fi
+if ! grep -q 'tool_prefix="dataset_tool"' "$REPO/agents/openhands_sdk/std_to_sft.py"; then
+  echo "ADP repo does not include dataset tool truncation patch" >&2
+  exit 1
+fi
 
 if [ ! -d "$REPO/datasets/$DATASET" ]; then
   echo "Dataset directory not found: $REPO/datasets/$DATASET" >&2
   exit 1
 fi
 
-(
-  cd "$REPO/datasets/$DATASET" || exit 1
-  env -u PYTHONPATH "$PYTHON" extract_raw.py
-) > "$RAW_JSONL.tmp" 2> "$LOG_DIR/${DATASET}.extract_raw.stderr"
-extract_status=$?
-raw_lines=$(wc -l < "$RAW_JSONL.tmp" 2>/dev/null || echo 0)
-echo "extract_status=$extract_status raw_lines=$raw_lines"
-if [ "$extract_status" -ne 0 ] || [ "$raw_lines" -eq 0 ]; then
-  echo "extract_raw failed or produced no rows" >&2
-  exit 1
+if [ -s "$RAW_JSONL" ]; then
+  extract_status=0
+  raw_lines=$(wc -l < "$RAW_JSONL" 2>/dev/null || echo 0)
+  echo "extract_status=0 raw_lines=$raw_lines reused=$RAW_JSONL"
+else
+  (
+    cd "$REPO/datasets/$DATASET" || exit 1
+    env -u PYTHONPATH "$PYTHON" extract_raw.py
+  ) > "$RAW_JSONL.tmp" 2> "$LOG_DIR/${DATASET}.extract_raw.stderr"
+  extract_status=$?
+  raw_lines=$(wc -l < "$RAW_JSONL.tmp" 2>/dev/null || echo 0)
+  echo "extract_status=$extract_status raw_lines=$raw_lines"
+  if [ "$extract_status" -ne 0 ] || [ "$raw_lines" -eq 0 ]; then
+    echo "extract_raw failed or produced no rows" >&2
+    exit 1
+  fi
+  mv "$RAW_JSONL.tmp" "$RAW_JSONL"
 fi
-mv "$RAW_JSONL.tmp" "$RAW_JSONL"
 
-(
-  cd "$REPO/datasets/$DATASET" || exit 1
-  PYTHONPATH="$REPO:${PYTHONPATH:-}" "$PYTHON" raw_to_standardized.py < "$RAW_JSONL"
-) > "$STD_JSONL.tmp" 2> "$LOG_DIR/${DATASET}.raw_to_standardized.stderr"
-std_status=$?
-std_lines=$(wc -l < "$STD_JSONL.tmp" 2>/dev/null || echo 0)
-echo "std_status=$std_status std_lines=$std_lines"
-if [ "$std_status" -ne 0 ] || [ "$std_lines" -eq 0 ]; then
-  echo "raw_to_standardized failed or produced no rows" >&2
-  exit 1
+if [ -s "$STD_JSONL" ]; then
+  std_status=0
+  std_lines=$(wc -l < "$STD_JSONL" 2>/dev/null || echo 0)
+  echo "std_status=0 std_lines=$std_lines reused=$STD_JSONL"
+else
+  (
+    cd "$REPO/datasets/$DATASET" || exit 1
+    PYTHONPATH="$REPO:${PYTHONPATH:-}" "$PYTHON" raw_to_standardized.py < "$RAW_JSONL"
+  ) > "$STD_JSONL.tmp" 2> "$LOG_DIR/${DATASET}.raw_to_standardized.stderr"
+  std_status=$?
+  std_lines=$(wc -l < "$STD_JSONL.tmp" 2>/dev/null || echo 0)
+  echo "std_status=$std_status std_lines=$std_lines"
+  if [ "$std_status" -ne 0 ] || [ "$std_lines" -eq 0 ]; then
+    echo "raw_to_standardized failed or produced no rows" >&2
+    exit 1
+  fi
+  mv "$STD_JSONL.tmp" "$STD_JSONL"
 fi
-mv "$STD_JSONL.tmp" "$STD_JSONL"
 
 if [ ! -f "$REPO/datasets/$DATASET/metadata.json" ]; then
   PYTHONPATH="$REPO:${PYTHONPATH:-}" "$PYTHON" - "$REPO" "$DATASET" "$STD_JSONL" <<'PY'
@@ -167,25 +193,80 @@ PY
 fi
 
 
-(
-  cd "$REPO" || exit 1
-  MY_DATASET="$DATASET" PYTHONPATH="$REPO:${PYTHONPATH:-}" "$PYTHON" \
-    agents/openhands_sdk/condensation_sft.py \
-      --max-tokens 12000 \
-      --model "$LLM_MODEL" \
-      --concurrency 8 \
-      --chunk-size 8 \
-      --continue-on-error \
-      < "$STD_JSONL"
-) > "$CONDENSER_JSONL.tmp" 2> "$LOG_DIR/${DATASET}.openhands_sdk_condensation.stderr"
-cond_status=$?
-cond_lines=$(wc -l < "$CONDENSER_JSONL.tmp" 2>/dev/null || echo 0)
-echo "condensation_status=$cond_status condensation_lines=$cond_lines"
-if [ "$cond_status" -eq 0 ] && [ "$cond_lines" -gt 0 ]; then
-  mv "$CONDENSER_JSONL.tmp" "$CONDENSER_JSONL"
+if [ -s "$CONDENSER_JSONL" ]; then
+  cond_status=0
+  cond_lines=$(wc -l < "$CONDENSER_JSONL" 2>/dev/null || echo 0)
+  echo "condensation_status=0 condensation_lines=$cond_lines reused=$CONDENSER_JSONL"
 else
-  echo "condensation_sft failed or produced no rows" >&2
-  rm -f "$CONDENSER_JSONL.tmp"
+  CONDENSER_TMP="$CONDENSER_JSONL.tmp"
+  RESUME_STD_JSONL="$OUT_DIR/full_std.resume.jsonl"
+  if [ -s "$CONDENSER_TMP" ]; then
+    PYTHONPATH="$REPO:${PYTHONPATH:-}" "$PYTHON" - "$STD_JSONL" "$CONDENSER_TMP" "$RESUME_STD_JSONL" <<'PY_INNER'
+import json
+import sys
+from pathlib import Path
+
+std_path = Path(sys.argv[1])
+partial_path = Path(sys.argv[2])
+out_path = Path(sys.argv[3])
+processed = set()
+with partial_path.open(errors='replace') as handle:
+    for line in handle:
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        source_id = row.get('metadata', {}).get('source_trajectory_id')
+        if source_id:
+            processed.add(source_id)
+with std_path.open() as in_handle, out_path.open('w') as out_handle:
+    kept = skipped = 0
+    for line in in_handle:
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        if row.get('id') in processed:
+            skipped += 1
+            continue
+        out_handle.write(line if line.endswith('\n') else line + '\n')
+        kept += 1
+print(f'resume_processed={len(processed)} resume_skipped={skipped} resume_remaining={kept}', flush=True)
+PY_INNER
+    COND_INPUT="$RESUME_STD_JSONL"
+  else
+    : > "$CONDENSER_TMP"
+    COND_INPUT="$STD_JSONL"
+  fi
+
+  remaining_lines=$(wc -l < "$COND_INPUT" 2>/dev/null || echo 0)
+  if [ "$remaining_lines" -eq 0 ]; then
+    cond_status=0
+    cond_lines=$(wc -l < "$CONDENSER_TMP" 2>/dev/null || echo 0)
+    echo "condensation_status=0 condensation_lines=$cond_lines resumed_complete=1"
+    mv "$CONDENSER_TMP" "$CONDENSER_JSONL"
+  else
+    (
+      cd "$REPO" || exit 1
+      MY_DATASET="$DATASET" PYTHONPATH="$REPO:${PYTHONPATH:-}" "$PYTHON" \
+        agents/openhands_sdk/condensation_sft.py \
+          --max-tokens 24000 \
+          --model "$LLM_MODEL" \
+          --concurrency 8 \
+          --chunk-size 8 \
+          --continue-on-error \
+          < "$COND_INPUT"
+    ) >> "$CONDENSER_TMP" 2>> "$LOG_DIR/${DATASET}.openhands_sdk_condensation.stderr"
+    cond_status=$?
+    cond_lines=$(wc -l < "$CONDENSER_TMP" 2>/dev/null || echo 0)
+    echo "condensation_status=$cond_status condensation_lines=$cond_lines"
+    if [ "$cond_status" -eq 0 ] && [ "$cond_lines" -gt 0 ]; then
+      mv "$CONDENSER_TMP" "$CONDENSER_JSONL"
+    else
+      echo "condensation_sft failed or produced no rows; keeping partial $CONDENSER_TMP" >&2
+    fi
+  fi
 fi
 
 finished_at=$(date -Is)
@@ -198,7 +279,7 @@ cat > "$MANIFEST" <<JSON
   "std_lines": $std_lines,
   "condensation_status": $cond_status,
   "condensation_lines": $cond_lines,
-  "max_tokens": 12000,
+  "max_tokens": 24000,
   "llm_model": "$LLM_MODEL",
   "raw_jsonl": "$RAW_JSONL",
   "std_jsonl": "$STD_JSONL",
