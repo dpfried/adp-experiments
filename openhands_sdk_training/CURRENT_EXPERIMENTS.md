@@ -18,6 +18,29 @@ llamafactory eval: full_condenser_24k_all_records_eval.llamafactory.jsonl
 tokenized 4B path: tokenized_qwen35_4b_seq32768_all_records
 ```
 
+### LLaMA-Factory normalization requirement
+
+For OpenHands SDK SFT records, do not point LLaMA-Factory at the canonical
+OpenAI JSONL directly and do not hand-normalize fields in an experiment-local
+script. Regenerate LLaMA-Factory train/eval files with the ADP adapter:
+
+```bash
+python -m agents.openhands_sdk.sft_to_llamafactory \
+  --input INPUT.openai.jsonl \
+  --output OUTPUT.llamafactory.jsonl \
+  --dataset-info dataset_info.json \
+  --dataset-name DATASET_NAME \
+  --trim-to-trainable \
+  --skip-untrainable
+```
+
+This adapter converts tool calls into LLaMA-Factory `function_call` messages,
+merges adjacent prompt-side messages, trims to trainable prefixes, and
+stringifies the top-level `tools` field. The `tools` stringification is required
+before LLaMA-Factory invokes Hugging Face `datasets.load_dataset`; otherwise
+heterogeneous nested tool schemas can be inferred as incompatible Arrow structs
+and fail before LLaMA-Factory's own converter runs.
+
 Manifest counts:
 
 ```text
