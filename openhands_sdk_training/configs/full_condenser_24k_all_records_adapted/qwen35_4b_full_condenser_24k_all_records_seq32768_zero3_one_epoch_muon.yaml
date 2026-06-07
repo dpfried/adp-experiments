@@ -1,0 +1,51 @@
+### model
+model_name_or_path: Qwen/Qwen3.5-4B-Base
+trust_remote_code: true
+enable_liger_kernel: true
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+use_muon: true
+deepspeed: /home/gneubig/exp/adp/runs/openhands_sdk_training/full_condenser_24k_all_records_adapted/ds_z3_muon_config.json
+
+### dataset
+dataset: full_condenser_24k_all_records_train
+eval_dataset: full_condenser_24k_all_records_eval
+dataset_dir: /home/gneubig/exp/adp/runs/openhands_sdk_training/full_condenser_24k_all_records_adapted
+template: qwen3_5_nothink
+cutoff_len: 32768
+overwrite_cache: false
+preprocessing_num_workers: 4
+dataloader_num_workers: 0
+tokenized_path: /home/gneubig/exp/adp/runs/openhands_sdk_training/full_condenser_24k_all_records_adapted/tokenized_qwen35_4b_seq32768_all_records
+
+### output
+output_dir: /home/gneubig/exp/adp/runs/openhands_sdk_training/full_condenser_24k_all_records_adapted/output_qwen35_4b_seq32768_zero3_one_epoch_muon
+logging_steps: 1
+save_steps: 500
+save_total_limit: 3
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: true
+report_to: wandb
+run_name: adp-full-condenser-24k-all-records-qwen35-4b-seq32768-zero3-one-epoch-muon
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 1.0e-5
+max_steps: 5322
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+fp16: false
+gradient_checkpointing: true
+ddp_timeout: 180000000
+resume_from_checkpoint: null
+
+### eval
+per_device_eval_batch_size: 1
+eval_strategy: steps
+eval_steps: 100
