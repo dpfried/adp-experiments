@@ -53,6 +53,29 @@ Use the repository-level workspace convention:
 - `scripts/run_training.sh`: launch the 10k-step run in the background.
 - `scripts/monitor_training.sh`: inspect the running job, logs, and ROCm memory.
 
+## Babel Slurm Run History
+
+The Babel Slurm jobs used for the condenser and Qwen3.5 training experiments
+are archived in this repo:
+
+- `slurm/`: submitted Slurm job scripts copied from
+  `~/exp/adp/runs/openhands_sdk_training/slurm`, including the Qwen3.5 9B
+  32k full-condenser run.
+- `configs/`: LLaMA-Factory YAML configs copied from
+  `~/exp/adp/runs/openhands_sdk_training/*/*.yaml`.
+- `run_history/slurm_adp_jobs_2026-06-01.tsv`: `sacct` history for ADP Slurm
+  jobs since 2026-06-01, including failed/cancelled smoke attempts and the
+  active production runs.
+
+The most recent 9B production run is:
+
+```text
+Job:    adp-qwen35-9b-32k-cond24k-fa2-a100
+Script: slurm/run_qwen35_9b_liger_seq32768_full_condenser_24k_all_records_one_epoch_large80_192g.sbatch
+Config: configs/full_condenser_24k_all_records_adapted/qwen35_9b_full_condenser_24k_all_records_seq32768_zero3_one_epoch_a100.yaml
+State:  running as Slurm job 8263041 on babel-v5-20
+```
+
 ## Reproduce
 
 Run from the repository root:

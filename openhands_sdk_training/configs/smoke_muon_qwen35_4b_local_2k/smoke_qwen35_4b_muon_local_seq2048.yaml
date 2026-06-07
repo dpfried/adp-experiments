@@ -1,0 +1,47 @@
+### model
+model_name_or_path: Qwen/Qwen3.5-4B-Base
+trust_remote_code: true
+enable_liger_kernel: true
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+use_muon: true
+pure_bf16: true
+
+### dataset
+dataset: smoke_muon_adapter_100
+dataset_dir: /home/gneubig/exp/adp/runs/openhands_sdk_training/smoke_muon_qwen35_4b_z2
+template: qwen3_5_nothink
+cutoff_len: 2048
+overwrite_cache: true
+preprocessing_num_workers: 4
+dataloader_num_workers: 0
+
+### output
+output_dir: /home/gneubig/exp/adp/runs/openhands_sdk_training/smoke_muon_qwen35_4b_local_2k/output_qwen35_4b_muon_local_2k
+logging_steps: 1
+save_strategy: "no"
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: true
+report_to: none
+run_name: adp-local-smoke-muon-qwen35-4b-seq2048
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 1
+learning_rate: 1.0e-5
+max_steps: 1
+lr_scheduler_type: cosine
+warmup_ratio: 0.0
+bf16: true
+fp16: false
+gradient_checkpointing: true
+ddp_timeout: 180000000
+resume_from_checkpoint: null
+
+### eval
+per_device_eval_batch_size: 1
+eval_strategy: "no"
