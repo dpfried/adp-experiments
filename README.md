@@ -5,8 +5,9 @@ Agent Data Protocol (ADP) data release.
 
 Current contents:
 
-- `openhands_sdk_training/`: reproduce the Qwen3.5 0.8B LLaMA-Factory run on
-  the ADP OpenHands/SWE-Agent non-web mixture.
+- `openhands_sdk_training/`: reproduce the original Qwen3.5 0.8B
+  LLaMA-Factory run and track the current Qwen3.5 4B/9B OpenHands SDK
+  condenser SFT experiments.
 
 ## Local Workspace Convention
 
@@ -29,3 +30,5 @@ Recommended experiment layout:
 └── tmp/
 ```
 
+The current experiment ledger is
+`openhands_sdk_training/CURRENT_EXPERIMENTS.md`.

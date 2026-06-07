@@ -43,7 +43,7 @@ PRESETS = {
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-id", default="neulab/agent-data-collection")
-    parser.add_argument("--out", type=Path, default=Path("~/data/adp_openhands_sdk/hf_release").expanduser())
+    parser.add_argument("--out", type=Path, default=Path("~/exp/adp/datasets/hf_release").expanduser())
     parser.add_argument("--preset", choices=sorted(PRESETS), default="all")
     parser.add_argument("--subset", action="append", help="Additional or replacement subset. May be repeated.")
     args = parser.parse_args()
@@ -67,4 +67,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

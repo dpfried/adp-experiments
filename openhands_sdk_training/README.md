@@ -1,9 +1,13 @@
 # OpenHands SDK SFT Training With LLaMA-Factory
 
 These scripts reproduce the data extraction, cleaning, and training setup used
-for a small full-parameter fine-tuning run on ADP OpenHands-compatible SFT data.
+for ADP OpenHands-compatible SFT data.
 
-The run documented here used:
+The original reproducible script path below is the small 0.8B ROCm run. The
+current 32k Qwen3.5 4B/9B condenser experiments are tracked in
+[`CURRENT_EXPERIMENTS.md`](CURRENT_EXPERIMENTS.md).
+
+The original small run documented here used:
 
 - Model: `Qwen/Qwen3.5-0.8B-Base`
 - Trainer: LLaMA-Factory SFT
@@ -27,8 +31,10 @@ Use the repository-level workspace convention:
 
 - Code and scripts: `~/work/adp/adp-experiments/openhands_sdk_training`
 - Downloaded ADP release files: `~/exp/adp/datasets/hf_release`
-- Standardized/full source files used by condenser experiments: `~/exp/adp/datasets/hf_std`
-- Paper-style train/eval splits: `~/exp/adp/datasets/paper_openhands_nonweb_v1`
+- Standardized/full source files used by condenser experiments:
+  `~/exp/adp/datasets/hf_std`
+- Paper-style train/eval splits:
+  `~/exp/adp/datasets/paper_openhands_nonweb_v1`
 - Training logs and model outputs: `~/exp/adp/runs/openhands_sdk_training`
 - Shared Hugging Face cache: `~/exp/adp/cache/hf`
 
