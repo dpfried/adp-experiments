@@ -41,7 +41,7 @@ before LLaMA-Factory invokes Hugging Face `datasets.load_dataset`; otherwise
 heterogeneous nested tool schemas can be inferred as incompatible Arrow structs
 and fail before LLaMA-Factory's own converter runs.
 
-### Qwen3.5 32k Liger eval logits OOM
+### Qwen3.5 32k Liger logits OOM
 
 For Qwen3.5 long-context runs with `enable_liger_kernel: true`, training can fit
 while evaluation OOMs. This is counterintuitive but expected from the current
@@ -73,6 +73,14 @@ gathering logits, but it is not sufficient by itself for Liger Qwen3.5 because
 the model forward would still compute logits internally. The patch makes the
 forward loss-only as well. Do not use this patched path for generated-prediction
 metrics; it is intended for scalar eval loss/perplexity during SFT.
+
+For Qwen3.5-MoE models such as `Qwen3.5-35B-A3B`, training can OOM for the same
+underlying reason if LLaMA-Factory does not dispatch Liger for
+`model_type: qwen3_5_moe`. Recent Liger releases include
+`apply_liger_kernel_to_qwen3_5_moe`, whose training forward also avoids full
+logit materialization. The same patch script adds this LLaMA-Factory dispatch;
+without it, 32k full SFT materializes logits during training and can OOM before
+the first step.
 
 Manifest counts:
 
