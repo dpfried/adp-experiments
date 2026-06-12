@@ -118,8 +118,8 @@ Prebuild:
 Inference:
 
 ```text
-8331642: adp-swe-base4b, pending at documentation time
-8331643: adp-swe-ft4b, pending at documentation time
+8331642: adp-swe-base4b, running on babel-n9-32 with 2x L40S
+8331643: adp-swe-ft4b, running on babel-p9-24 with 2x L40S
 ```
 
 Scoring:
@@ -214,8 +214,20 @@ cat /home/gneubig/exp/adp/evals/full-swebench/q35_ft_ckpt2000_swe_epoch_tp2_cond
 
 ## Status
 
-At documentation time, the Apptainer prebuild was healthy and the current full
-base and fine-tuned inference jobs were pending on the `general` GPU partition.
+At the latest monitoring point, the Apptainer prebuild was healthy and the
+current full base and fine-tuned inference jobs were running on the `general`
+GPU partition with two L40S GPUs each. The logs confirmed `NUM_WORKERS=4`,
+`TENSOR_PARALLEL_SIZE=2`, `CUDA_VISIBLE_DEVICES=0,1`, and vLLM serving on both
+allocated GPUs.
+
+The current runs no longer show the earlier Apptainer `/workspace` permission
+failure or missing-image build failures. Early inference results are still poor:
+the first four completed rows in each run failed with `Remote conversation got
+stuck`, and all eight captured patches were empty. Inspection of representative
+trajectories showed repeated inspect/search/view actions and stuck-detector
+termination before a useful repo edit was made, so these early empty diffs look
+like model behavior rather than another patch-capture failure.
+
 Earlier `errpatch_r1` and `cachedpatch_r2/r3` attempts were cancelled after
 finding the failed-run patch capture bug and the Apptainer `/workspace`
 permission issue. Final patch counts and resolved/unresolved SWE-bench results
