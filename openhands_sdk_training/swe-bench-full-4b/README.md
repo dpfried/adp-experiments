@@ -161,6 +161,11 @@ The scorer writes per-run outputs under:
 <run_dir>/apptainer_patch_eval/patch_eval_summary.json
 ```
 
+The scorer script checked into this experiment directory accepts either the
+top-level vLLM run directory or the nested benchmark output directory. If
+`output.jsonl` and `output_errors.jsonl` are not present directly under
+`RUN_DIR`, it searches recursively for them.
+
 Scoring includes both `output.jsonl` and `output_errors.jsonl`, so error rows
 with captured patches are evaluated instead of being silently dropped.
 
