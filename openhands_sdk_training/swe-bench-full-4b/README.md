@@ -30,8 +30,9 @@ The full runs rely on draft PRs rather than untracked local edits:
   tokenizer/condenser CLI wiring, and lower `uv` build concurrency.
 - OpenHands/benchmarks#743: Apptainer SWE-bench scoring and support for the
   Epoch GHCR SWE-bench image mirror.
-- OpenHands/benchmarks#748: capture `git_patch` from failed, timed-out, or
-  stuck SWE-bench rows so generated patches can still be scored.
+- OpenHands/benchmarks#751: capture `git_patch` from failed, timed-out, or
+  stuck SWE-bench rows so generated patches can still be scored, and bind a
+  per-instance host directory onto `/workspace` for Apptainer inference.
 - OpenHands/software-agent-sdk#3641: Apptainer tokenizer binds and
   chat-template token counting for condenser thresholds.
 
@@ -98,6 +99,14 @@ OPENHANDS_APPTAINER_UV_CONCURRENT_INSTALLS=1
 Public skills are enabled (`OPENHANDS_DISABLE_PUBLIC_SKILLS=0`) because public
 skills are part of the standard OpenHands harness.
 
+Apptainer inference binds a per-instance host directory onto `/workspace`.
+This avoids intermittent `Permission denied` failures when repo setup tries to
+copy `/testbed` into `/workspace/<repo>` under Apptainer fakeroot/compat mode:
+
+```text
+OPENHANDS_APPTAINER_WORKSPACE_ROOT=/scratch/${USER}/openhands-apptainer-workspaces-${SLURM_JOB_ID}
+```
+
 ## Slurm jobs
 
 Prebuild:
@@ -109,19 +118,22 @@ Prebuild:
 Inference:
 
 ```text
-8325260: adp-swe-base4b, pending at documentation time
-8325261: adp-swe-ft4b, pending at documentation time
+8331642: adp-swe-base4b, pending at documentation time
+8331643: adp-swe-ft4b, pending at documentation time
 ```
 
 Scoring:
 
 ```text
-8327287: adp-swe-score for base run, dependency afterany:8325260
-8327288: adp-swe-score for fine-tuned run, dependency afterany:8325261
+8331644: adp-swe-score for base run, dependency afterany:8331642
+8331645: adp-swe-score for fine-tuned run, dependency afterany:8331643
 ```
 
-The live inference jobs were submitted with `NUM_WORKERS=4`, one L40S GPU each,
-`TENSOR_PARALLEL_SIZE=1`, 32 CPUs, 256 GB memory, and a 2 day adjusted walltime.
+The live inference jobs request the `general` partition, two GPUs constrained
+to `L40S|A6000`, `NUM_WORKERS=4`, `TENSOR_PARALLEL_SIZE=2`, 32 CPUs, 256 GB
+memory, and a 2 day walltime. The first allocation after this change used
+2x A6000 and a four-instance smoke reached `run() triggered successfully` for
+all four workers without `/workspace` permission errors.
 
 ## Run directories
 
@@ -129,12 +141,14 @@ Base output:
 
 ```text
 /home/gneubig/exp/adp/evals/full-swebench/q35_base_swe_epoch_tp1_cond28k_thinkoff_errpatch_r1
+/home/gneubig/exp/adp/evals/full-swebench/q35_base_swe_epoch_tp2_cond28k_thinkoff_cachedpatch_bind_2gpu4w_r4
 ```
 
 Fine-tuned output:
 
 ```text
 /home/gneubig/exp/adp/evals/full-swebench/q35_ft_ckpt2000_swe_epoch_tp1_cond28k_in28k_thinkoff_errpatch_r1
+/home/gneubig/exp/adp/evals/full-swebench/q35_ft_ckpt2000_swe_epoch_tp2_cond28k_in28k_thinkoff_cachedpatch_bind_2gpu4w_r4
 ```
 
 The scorer writes per-run outputs under:
@@ -156,57 +170,54 @@ The prebuild was launched before inference:
 sbatch --array=0-7%8 /home/gneubig/exp/adp/evals/slurm/swebench_prebuild_apptainer_epoch.sbatch
 ```
 
-The base and fine-tuned jobs were submitted after the successful prebuild:
+The current base and fine-tuned jobs were submitted after the patch-capture and
+Apptainer workspace-bind fixes:
 
 ```bash
-sbatch --dependency=afterok:8325026 --export=ALL,NUM_WORKERS=4 \
+sbatch --export=ALL,RUN_NAME=q35_base_swe_epoch_tp2_cond28k_thinkoff_cachedpatch_bind_2gpu4w_r4,NOTE=q35_base_swe_epoch_tp2_cond28k_thinkoff_cachedpatch_bind_2gpu4w_r4,N_LIMIT=0,NUM_WORKERS=4,TENSOR_PARALLEL_SIZE=2 \
   /home/gneubig/exp/adp/evals/slurm/swebench_full_qwen35_4b_base.sbatch
 
-sbatch --dependency=afterok:8325026 --export=ALL,NUM_WORKERS=4 \
+sbatch --export=ALL,RUN_NAME=q35_ft_ckpt2000_swe_epoch_tp2_cond28k_in28k_thinkoff_cachedpatch_bind_2gpu4w_r4,NOTE=q35_ft_ckpt2000_swe_epoch_tp2_cond28k_in28k_thinkoff_cachedpatch_bind_2gpu4w_r4,N_LIMIT=0,NUM_WORKERS=4,TENSOR_PARALLEL_SIZE=2 \
   /home/gneubig/exp/adp/evals/slurm/swebench_full_qwen35_4b_ft_ckpt2000.sbatch
-```
-
-The live jobs were shortened to two days:
-
-```bash
-scontrol update JobId=8325260 TimeLimit=2-00:00:00
-scontrol update JobId=8325261 TimeLimit=2-00:00:00
 ```
 
 Scoring was queued with `afterany` dependencies so it still runs if inference
 exits nonzero after writing partial outputs:
 
 ```bash
-sbatch --dependency=afterany:8325260 --export=ALL,RUN_DIR=/home/gneubig/exp/adp/evals/full-swebench/q35_base_swe_epoch_tp1_cond28k_thinkoff_errpatch_r1 \
+sbatch --dependency=afterany:8331642 --export=ALL,RUN_DIR=/home/gneubig/exp/adp/evals/full-swebench/q35_base_swe_epoch_tp2_cond28k_thinkoff_cachedpatch_bind_2gpu4w_r4 \
   /home/gneubig/exp/adp/evals/slurm/swebench_score_patches_apptainer.sbatch
 
-sbatch --dependency=afterany:8325261 --export=ALL,RUN_DIR=/home/gneubig/exp/adp/evals/full-swebench/q35_ft_ckpt2000_swe_epoch_tp1_cond28k_in28k_thinkoff_errpatch_r1 \
+sbatch --dependency=afterany:8331643 --export=ALL,RUN_DIR=/home/gneubig/exp/adp/evals/full-swebench/q35_ft_ckpt2000_swe_epoch_tp2_cond28k_in28k_thinkoff_cachedpatch_bind_2gpu4w_r4 \
   /home/gneubig/exp/adp/evals/slurm/swebench_score_patches_apptainer.sbatch
 ```
 
 ## Monitoring commands
 
 ```bash
-squeue -j 8325260,8325261,8327287,8327288 \
+squeue -j 8331642,8331643,8331644,8331645 \
   -o '%.18i %.24j %.9P %.8T %.10M %.10L %.20R'
 
-sacct -j 8325260,8325261,8327287,8327288 \
+sacct -j 8331642,8331643,8331644,8331645 \
   --format=JobID,JobName%24,State,ExitCode,Elapsed,NodeList -P
 
-tail -100 /home/gneubig/exp/adp/evals/full-swebench/slurm-adp-swe-base4b-8325260.out
-tail -100 /home/gneubig/exp/adp/evals/full-swebench/slurm-adp-swe-ft4b-8325261.out
+tail -100 /home/gneubig/exp/adp/evals/full-swebench/slurm-adp-swe-base4b-8331642.out
+tail -100 /home/gneubig/exp/adp/evals/full-swebench/slurm-adp-swe-ft4b-8331643.out
 ```
 
 After scoring completes, summarize:
 
 ```bash
-cat /home/gneubig/exp/adp/evals/full-swebench/q35_base_swe_epoch_tp1_cond28k_thinkoff_errpatch_r1/apptainer_patch_eval/patch_eval_summary.json
-cat /home/gneubig/exp/adp/evals/full-swebench/q35_ft_ckpt2000_swe_epoch_tp1_cond28k_in28k_thinkoff_errpatch_r1/apptainer_patch_eval/patch_eval_summary.json
+cat /home/gneubig/exp/adp/evals/full-swebench/q35_base_swe_epoch_tp2_cond28k_thinkoff_cachedpatch_bind_2gpu4w_r4/apptainer_patch_eval/patch_eval_summary.json
+cat /home/gneubig/exp/adp/evals/full-swebench/q35_ft_ckpt2000_swe_epoch_tp2_cond28k_in28k_thinkoff_cachedpatch_bind_2gpu4w_r4/apptainer_patch_eval/patch_eval_summary.json
 ```
 
 ## Status
 
-At documentation time, the Apptainer prebuild was healthy and the full base and
-fine-tuned inference jobs were still pending on the preempt GPU partition. Final
-patch counts and resolved/unresolved SWE-bench results should be added here
-after jobs `8325260`, `8325261`, `8327287`, and `8327288` finish.
+At documentation time, the Apptainer prebuild was healthy and the current full
+base and fine-tuned inference jobs were pending on the `general` GPU partition.
+Earlier `errpatch_r1` and `cachedpatch_r2/r3` attempts were cancelled after
+finding the failed-run patch capture bug and the Apptainer `/workspace`
+permission issue. Final patch counts and resolved/unresolved SWE-bench results
+should be added here after jobs `8331642`, `8331643`, `8331644`, and `8331645`
+finish.
