@@ -137,7 +137,7 @@ sources = candidate_sources(run_dir)
 print("candidate_sources=" + json.dumps([str(source) for source in sources]), flush=True)
 
 candidates: list[dict] = []
-seen_candidate_keys: set[tuple[str, str, str, int]] = set()
+seen_candidate_keys: set[tuple[str, str]] = set()
 for source in sources:
     for line_no, row in iter_rows(source):
         instance_id = row.get("instance_id")
@@ -148,7 +148,7 @@ for source in sources:
             continue
 
         patch_sha = hashlib.sha1(patch.encode("utf-8")).hexdigest()
-        candidate_key = (str(source.resolve()), instance_id, patch_sha, line_no)
+        candidate_key = (instance_id, patch_sha)
         if candidate_key in seen_candidate_keys:
             continue
         seen_candidate_keys.add(candidate_key)
