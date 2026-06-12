@@ -1,0 +1,212 @@
+# Full SWE-bench 4B Evaluation Runbook
+
+This documents the June 2026 full SWE-bench Verified evaluations for the ADP
+4B OpenHands experiments. The target comparison is the base Qwen3.5 4B model
+against the checkpoint-2000 fine-tuned model.
+
+## Models
+
+Base model:
+
+```text
+Qwen/Qwen3.5-4B-Base
+```
+
+Fine-tuned checkpoint:
+
+```text
+/home/gneubig/exp/adp/runs/openhands_sdk_training/full_condenser_24k_all_records_adapted/output_qwen35_4b_seq32768_zero3_one_epoch_flashattn/checkpoint-2000
+```
+
+The base run uses the fine-tuned checkpoint tokenizer for both SDK token
+counting and vLLM serving so that the Hugging Face chat template and special
+tokens match the fine-tuning/evaluation format.
+
+## Code changes used
+
+The full runs rely on draft PRs rather than untracked local edits:
+
+- OpenHands/benchmarks#745: Apptainer agent-server image builds, SIF reuse,
+  tokenizer/condenser CLI wiring, and lower `uv` build concurrency.
+- OpenHands/benchmarks#743: Apptainer SWE-bench scoring and support for the
+  Epoch GHCR SWE-bench image mirror.
+- OpenHands/benchmarks#748: capture `git_patch` from failed, timed-out, or
+  stuck SWE-bench rows so generated patches can still be scored.
+- OpenHands/software-agent-sdk#3641: Apptainer tokenizer binds and
+  chat-template token counting for condenser thresholds.
+
+## Token and decoding settings
+
+The model was trained with a 32768 total-token length and 28000 max input
+tokens, so the full runs use the same boundary:
+
+```text
+MAX_MODEL_LEN=32768
+MAX_INPUT_TOKENS=28000
+CONDENSER_MAX_TOKENS=28000
+MAX_OUTPUT_TOKENS=2047
+CONDENSER_MAX_OUTPUT_TOKENS=1024
+CONDENSER_MAX_SIZE=240
+CONDENSER_KEEP_FIRST=2
+```
+
+The condenser threshold is 28000, not 32000, because the model still needs room
+for generated output and tool-call framing after condensation. This also matches
+the SDK-side max input token guard.
+
+Thinking is disabled for both runs:
+
+```json
+{
+  "litellm_extra_body": {
+    "stop_token_ids": [248046],
+    "chat_template_kwargs": {"enable_thinking": false}
+  },
+  "reasoning_effort": "none"
+}
+```
+
+Both runs use native tool calling with vLLM's `qwen3_coder` tool parser,
+temperature 0.0, and a conversation timeout of 7200 seconds per instance.
+
+## Apptainer image strategy
+
+The full run uses the Epoch SWE-bench image mirror:
+
+```text
+OPENHANDS_SWEBENCH_IMAGE_TEMPLATE=ghcr.io/epoch-research/swe-bench.eval.x86_64.{instance_id}:latest
+```
+
+The agent-server SIF build cache is shared across prebuild, inference, and
+scoring:
+
+```text
+OPENHANDS_APPTAINER_BUILD_ROOT=/data/user_data/gneubig/openhands/oh-apptainer-swebench-epoch-sdk43376f1
+APPTAINER_CACHEDIR=/data/user_data/gneubig/openhands/apptainer-cache-swebench-epoch
+```
+
+The full prebuild job built 500/500 SWE-bench Verified images successfully.
+Each prebuild array task used about 59 GB peak RSS, so the successful run used
+64 GB memory jobs and serialized `uv` builds:
+
+```text
+OPENHANDS_APPTAINER_UV_CONCURRENT_DOWNLOADS=4
+OPENHANDS_APPTAINER_UV_CONCURRENT_BUILDS=1
+OPENHANDS_APPTAINER_UV_CONCURRENT_INSTALLS=1
+```
+
+Public skills are enabled (`OPENHANDS_DISABLE_PUBLIC_SKILLS=0`) because public
+skills are part of the standard OpenHands harness.
+
+## Slurm jobs
+
+Prebuild:
+
+```text
+8325026: adp-swe-prebuild, array 0-7, completed, 500/500 images built
+```
+
+Inference:
+
+```text
+8325260: adp-swe-base4b, pending at documentation time
+8325261: adp-swe-ft4b, pending at documentation time
+```
+
+Scoring:
+
+```text
+8327287: adp-swe-score for base run, dependency afterany:8325260
+8327288: adp-swe-score for fine-tuned run, dependency afterany:8325261
+```
+
+The live inference jobs were submitted with `NUM_WORKERS=4`, one L40S GPU each,
+`TENSOR_PARALLEL_SIZE=1`, 32 CPUs, 256 GB memory, and a 2 day adjusted walltime.
+
+## Run directories
+
+Base output:
+
+```text
+/home/gneubig/exp/adp/evals/full-swebench/q35_base_swe_epoch_tp1_cond28k_thinkoff_errpatch_r1
+```
+
+Fine-tuned output:
+
+```text
+/home/gneubig/exp/adp/evals/full-swebench/q35_ft_ckpt2000_swe_epoch_tp1_cond28k_in28k_thinkoff_errpatch_r1
+```
+
+The scorer writes per-run outputs under:
+
+```text
+<run_dir>/apptainer_patch_eval/patch_candidates.jsonl
+<run_dir>/apptainer_patch_eval/patch_eval_results.jsonl
+<run_dir>/apptainer_patch_eval/patch_eval_summary.json
+```
+
+Scoring includes both `output.jsonl` and `output_errors.jsonl`, so error rows
+with captured patches are evaluated instead of being silently dropped.
+
+## Submission commands
+
+The prebuild was launched before inference:
+
+```bash
+sbatch --array=0-7%8 /home/gneubig/exp/adp/evals/slurm/swebench_prebuild_apptainer_epoch.sbatch
+```
+
+The base and fine-tuned jobs were submitted after the successful prebuild:
+
+```bash
+sbatch --dependency=afterok:8325026 --export=ALL,NUM_WORKERS=4 \
+  /home/gneubig/exp/adp/evals/slurm/swebench_full_qwen35_4b_base.sbatch
+
+sbatch --dependency=afterok:8325026 --export=ALL,NUM_WORKERS=4 \
+  /home/gneubig/exp/adp/evals/slurm/swebench_full_qwen35_4b_ft_ckpt2000.sbatch
+```
+
+The live jobs were shortened to two days:
+
+```bash
+scontrol update JobId=8325260 TimeLimit=2-00:00:00
+scontrol update JobId=8325261 TimeLimit=2-00:00:00
+```
+
+Scoring was queued with `afterany` dependencies so it still runs if inference
+exits nonzero after writing partial outputs:
+
+```bash
+sbatch --dependency=afterany:8325260 --export=ALL,RUN_DIR=/home/gneubig/exp/adp/evals/full-swebench/q35_base_swe_epoch_tp1_cond28k_thinkoff_errpatch_r1 \
+  /home/gneubig/exp/adp/evals/slurm/swebench_score_patches_apptainer.sbatch
+
+sbatch --dependency=afterany:8325261 --export=ALL,RUN_DIR=/home/gneubig/exp/adp/evals/full-swebench/q35_ft_ckpt2000_swe_epoch_tp1_cond28k_in28k_thinkoff_errpatch_r1 \
+  /home/gneubig/exp/adp/evals/slurm/swebench_score_patches_apptainer.sbatch
+```
+
+## Monitoring commands
+
+```bash
+squeue -j 8325260,8325261,8327287,8327288 \
+  -o '%.18i %.24j %.9P %.8T %.10M %.10L %.20R'
+
+sacct -j 8325260,8325261,8327287,8327288 \
+  --format=JobID,JobName%24,State,ExitCode,Elapsed,NodeList -P
+
+tail -100 /home/gneubig/exp/adp/evals/full-swebench/slurm-adp-swe-base4b-8325260.out
+tail -100 /home/gneubig/exp/adp/evals/full-swebench/slurm-adp-swe-ft4b-8325261.out
+```
+
+After scoring completes, summarize:
+
+```bash
+cat /home/gneubig/exp/adp/evals/full-swebench/q35_base_swe_epoch_tp1_cond28k_thinkoff_errpatch_r1/apptainer_patch_eval/patch_eval_summary.json
+cat /home/gneubig/exp/adp/evals/full-swebench/q35_ft_ckpt2000_swe_epoch_tp1_cond28k_in28k_thinkoff_errpatch_r1/apptainer_patch_eval/patch_eval_summary.json
+```
+
+## Status
+
+At documentation time, the Apptainer prebuild was healthy and the full base and
+fine-tuned inference jobs were still pending on the preempt GPU partition. Final
+patch counts and resolved/unresolved SWE-bench results should be added here
+after jobs `8325260`, `8325261`, `8327287`, and `8327288` finish.
