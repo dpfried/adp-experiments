@@ -82,6 +82,52 @@ logit materialization. The same patch script adds this LLaMA-Factory dispatch;
 without it, 32k full SFT materializes logits during training and can OOM before
 the first step.
 
+### Qwen3.5-35B-A3B multi-node efficiency
+
+On 2x8 H100 nodes, Qwen3.5-35B-A3B full SFT is communication-bound under
+ordinary ZeRO-3. The model has roughly 35B trainable parameters, but most are
+MoE expert weights. With 256 experts and 8 selected experts per token, the
+active-parameter estimate is only about 4B parameters per token, while ZeRO-3
+still shards and gathers the near-35B trainable parameter set. Padding/packing
+can still waste useful token work, but it is not enough to explain the observed
+low FLOP utilization by itself.
+
+The profile run showed `nccl:_all_gather_base` and `nccl:_reduce_scatter_base`
+as dominant costs, and NCCL initialized with socket networking rather than
+IB/RDMA:
+
+```text
+NCCL INFO NET/Plugin: Could not find: libnccl-net.so
+NCCL INFO NET/IB : No device found.
+NCCL INFO Using network Socket
+```
+
+The best reproducible LLaMA-Factory/DeepSpeed fix found so far is hierarchical
+ZeRO partitioning with one ZeRO parameter partition group per 8-GPU node:
+
+```json
+{
+  "zero_optimization": {
+    "stage": 3,
+    "overlap_comm": true,
+    "contiguous_gradients": true,
+    "reduce_bucket_size": "auto",
+    "stage3_prefetch_bucket_size": "auto",
+    "stage3_param_persistence_threshold": "auto",
+    "stage3_gather_16bit_weights_on_model_save": false,
+    "zero_hpz_partition_size": 8
+  }
+}
+```
+
+For a 16-rank run with ranks assigned node-locally, `zero_hpz_partition_size: 8`
+forms groups `[0..7]` and `[8..15]`, keeping ZeRO parameter all-gathers within
+each NVLink-connected node and avoiding the slow socket path for that traffic.
+This raised memory to roughly 67-69 GiB/GPU but improved post-warmup step time
+from about 75s to about 51s in the 35B-A3B 32k benchmark. Do not combine this
+with manual large ZeRO bucket tuning without re-testing; larger bucket variants
+OOMed or hit CUDA errors in smoke runs.
+
 Manifest counts:
 
 ```text
