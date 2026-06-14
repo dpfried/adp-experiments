@@ -41,6 +41,7 @@ DS_MODEL_ONLY_SCHEDULER_PATCH_MARKER = (
     "# ADP patch: skip missing DeepSpeed scheduler state for HF model-only checkpoint."
 )
 SKIP_FINAL_SAVE_PATCH_MARKER = "# ADP patch: optionally skip benchmark final save."
+SKIP_FINAL_PLOT_PATCH_MARKER = "# ADP patch: skip loss plotting when benchmark state is skipped."
 FUSED_MOE_LIGER_EXPERTS_PATCH_MARKER = "# ADP patch: cuda_fused_moe recognizes LigerExperts."
 OLD = """        loss, generated_tokens, _ = super().prediction_step(
             model, inputs, prediction_loss_only=prediction_loss_only, ignore_keys=ignore_keys, **gen_kwargs
@@ -155,6 +156,14 @@ SKIP_FINAL_SAVE_NEW = f"""        train_result = trainer.train(resume_from_check
         if not adp_skip_final_save:
             trainer.save_state()
 """
+SKIP_FINAL_PLOT_OLD = """        if trainer.is_world_process_zero() and finetuning_args.plot_loss:
+"""
+SKIP_FINAL_PLOT_NEW = f"""        if (
+            trainer.is_world_process_zero()
+            and finetuning_args.plot_loss
+            and not adp_skip_final_save  {SKIP_FINAL_PLOT_PATCH_MARKER}
+        ):
+"""
 FUSED_MOE_LIGER_EXPERTS_OLD = """    "Qwen3_5MoeForCausalLM": {
         "Qwen3_5MoeExperts": _triton_moe_experts_forward,
     },
@@ -237,6 +246,20 @@ def main() -> int:
             SKIP_FINAL_SAVE_NEW,
             SKIP_FINAL_SAVE_PATCH_MARKER,
             "hyper-parallel SFT benchmark final save skip",
+        ),
+        patch_file(
+            "llamafactory.train.sft.workflow",
+            SKIP_FINAL_PLOT_OLD,
+            SKIP_FINAL_PLOT_NEW,
+            SKIP_FINAL_PLOT_PATCH_MARKER,
+            "SFT benchmark plot_loss skip",
+        ),
+        patch_file(
+            "llamafactory.train.hyper_parallel.workflow",
+            SKIP_FINAL_PLOT_OLD,
+            SKIP_FINAL_PLOT_NEW,
+            SKIP_FINAL_PLOT_PATCH_MARKER,
+            "hyper-parallel SFT benchmark plot_loss skip",
         ),
         patch_file(
             "llamafactory.v1.plugins.model_plugins.kernels.ops.mlp.cuda_fused_moe",
