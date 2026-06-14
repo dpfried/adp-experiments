@@ -17,6 +17,24 @@ from pathlib import Path
 from statistics import mean
 
 
+def elapsed_to_seconds(value: object) -> float | None:
+    if not isinstance(value, str) or not value:
+        return None
+    parts = value.split(":")
+    try:
+        numbers = [int(part) for part in parts]
+    except ValueError:
+        return None
+    if len(numbers) == 3:
+        hours, minutes, seconds = numbers
+    elif len(numbers) == 2:
+        hours = 0
+        minutes, seconds = numbers
+    else:
+        return None
+    return float(hours * 3600 + minutes * 60 + seconds)
+
+
 def percentile(values: list[float], pct: float) -> float:
     if not values:
         return math.nan
@@ -63,12 +81,36 @@ def summarize_trainer(events: list[dict]) -> list[str]:
         return ["trainer_log: no parsed step records"]
 
     last = steps[-1]
+    timed_steps: list[tuple[int, float]] = []
+    for event in steps:
+        step = event.get("current_steps", event.get("step"))
+        seconds = elapsed_to_seconds(event.get("elapsed_time"))
+        if isinstance(step, int) and seconds is not None:
+            timed_steps.append((step, seconds))
+
     rows.append(
         "trainer_log: "
         f"records={len(events)} last_step={last.get('step', last.get('current_steps', 'n/a'))} "
         f"last_loss={last.get('loss', 'n/a')} "
         f"runtime={last.get('train_runtime', 'n/a')}"
     )
+    if timed_steps:
+        deltas = []
+        prev_step = 0
+        prev_seconds = 0.0
+        for step, seconds in timed_steps:
+            step_delta = step - prev_step
+            if step_delta > 0:
+                deltas.append((seconds - prev_seconds) / step_delta)
+            prev_step = step
+            prev_seconds = seconds
+        rows.append(
+            "trainer_steps: "
+            f"first_step_s={fmt(deltas[0], 1)} "
+            f"median_step_s={fmt(percentile(deltas, 50), 1)} "
+            f"last_step_s={fmt(deltas[-1], 1)} "
+            f"steps_per_hour={fmt(3600.0 / percentile(deltas, 50), 1)}"
+        )
     return rows
 
 
