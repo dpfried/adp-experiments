@@ -36,6 +36,7 @@ DS_MODEL_ONLY_PATCH_MARKER = "# ADP patch: tolerate HF model-only checkpoint for
 DS_MODEL_ONLY_SCHEDULER_PATCH_MARKER = (
     "# ADP patch: skip missing DeepSpeed scheduler state for HF model-only checkpoint."
 )
+SKIP_FINAL_SAVE_PATCH_MARKER = "# ADP patch: optionally skip benchmark final save."
 OLD = """        loss, generated_tokens, _ = super().prediction_step(
             model, inputs, prediction_loss_only=prediction_loss_only, ignore_keys=ignore_keys, **gen_kwargs
         )
@@ -116,6 +117,39 @@ DS_MODEL_ONLY_SCHEDULER_NEW = f"""        if self.is_deepspeed_enabled:
                 reissue_pt_warnings(caught_warnings)
             return
 """
+SKIP_FINAL_SAVE_OLD = """        train_result = trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
+        trainer.save_model()
+        if finetuning_args.include_effective_tokens_per_second:
+            train_result.metrics["effective_tokens_per_sec"] = calculate_tps(
+                dataset_module["train_dataset"], train_result.metrics, stage="sft"
+            )
+
+        trainer.log_metrics("train", train_result.metrics)
+        trainer.save_metrics("train", train_result.metrics)
+        trainer.save_state()
+"""
+SKIP_FINAL_SAVE_NEW = f"""        train_result = trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
+        adp_skip_final_save = __import__("os").environ.get("ADP_LF_SKIP_FINAL_SAVE", "").lower() in {{
+            "1",
+            "true",
+            "yes",
+        }}
+        if adp_skip_final_save:
+            {SKIP_FINAL_SAVE_PATCH_MARKER}
+            logger.warning("ADP_LF_SKIP_FINAL_SAVE=1: skipping final save_model/save_state for benchmark run.")
+        else:
+            trainer.save_model()
+
+        if finetuning_args.include_effective_tokens_per_second:
+            train_result.metrics["effective_tokens_per_sec"] = calculate_tps(
+                dataset_module["train_dataset"], train_result.metrics, stage="sft"
+            )
+
+        trainer.log_metrics("train", train_result.metrics)
+        trainer.save_metrics("train", train_result.metrics)
+        if not adp_skip_final_save:
+            trainer.save_state()
+"""
 
 
 def patch_file(module: str, old: str, new: str, marker: str, description: str) -> int:
@@ -168,6 +202,20 @@ def main() -> int:
             DS_MODEL_ONLY_SCHEDULER_NEW,
             DS_MODEL_ONLY_SCHEDULER_PATCH_MARKER,
             "DeepSpeed HF model-only scheduler continuation",
+        ),
+        patch_file(
+            "llamafactory.train.sft.workflow",
+            SKIP_FINAL_SAVE_OLD,
+            SKIP_FINAL_SAVE_NEW,
+            SKIP_FINAL_SAVE_PATCH_MARKER,
+            "SFT benchmark final save skip",
+        ),
+        patch_file(
+            "llamafactory.train.hyper_parallel.workflow",
+            SKIP_FINAL_SAVE_OLD,
+            SKIP_FINAL_SAVE_NEW,
+            SKIP_FINAL_SAVE_PATCH_MARKER,
+            "hyper-parallel SFT benchmark final save skip",
         ),
     )
 
