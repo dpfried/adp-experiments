@@ -464,6 +464,31 @@ config: configs/full_condenser_24k_all_records_v2_adapted/qwen35_35b_a3b_mca_tp2
 launcher: scripts/run_qwen35_35b_a3b_mca_tp2_pp4_ep2_smoke6_base_50step.sbatch
 ```
 
+Job `123845` (`smoke6_base_50step`) completed:
+
+```text
+state: COMPLETED
+elapsed: 00:20:23
+exit_code: 0:0
+train_runtime: 1136.0s
+train_steps_per_second: 0.044
+train_loss: 0.6541
+```
+
+This makes FA4 a wash rather than a clear win:
+
+```text
+50-step FA4 clone: 1131.0s train_runtime, 0.044 steps/s, peak ~80.44GB
+50-step base venv: 1136.0s train_runtime, 0.044 steps/s, peak ~80.50GB
+```
+
+The FA4 run had some higher per-step `token_per_sec_per_gpu` readings, but the
+end-to-end 50-step runtime differed by only about 0.4%, while the FA4 clone
+requires a fragile package combination and still emits a `flash-attn v3`
+warning. For now, keep the regular `.venv_mca` TP2/PP4/EP2 recipe as the
+practical baseline; FA4 is not worth carrying into full runs unless a newer
+Transformer Engine / FA4 stack becomes cleaner.
+
 Open MCA memory/speed candidates after the TP2 smoke:
 
 - Implement context-parallel gated-delta attention for Qwen3.5/MCA so the 32k
