@@ -807,25 +807,93 @@ setting for TP+MoE, but it is not the fundamental fix for low MFU; the largest
 remaining targets are still the non-interleaved pipeline schedule and the
 Qwen3.5 gated-delta implementation.
 
+Follow-up smokes on 2026-06-15 tried the highest-impact remaining knobs:
+
+```text
+job: 123870
+config: configs/full_condenser_24k_all_records_v2_adapted/qwen35_35b_a3b_mca_tp2_pp4_ep2_sp_gas64_smoke16_fa3_12step.yaml
+launcher: scripts/run_qwen35_35b_a3b_mca_tp2_pp4_ep2_sp_gas64_smoke16_fa3_12step.sbatch
+parallelism: TP=2, PP=4, EP=2, CP=1, SP=true, GAS=64
+result: COMPLETED
+train_runtime: 1464s for 12 optimizer steps
+train_samples_per_second: 1.049
+train_steps_per_second: 0.008
+train_loss: 0.5324
+steady logged token/sec/GPU after burn-in: mostly 21.5k-22.3k
+peak sampled memory: about 80.3 GiB on the hottest local ranks
+```
+
+Increasing GAS from 8 to 64 raised later token/sec/GPU compared with the
+50-step GAS8 run, but it also changed the global batch from 16 to 128 and left
+very little memory headroom on several ranks. Treat this as evidence that
+kernel/communication amortization still matters, not as the default full-run
+recipe unless the learning-rate and batch-size change are explicitly desired.
+
+```text
+job: 123871
+config: configs/full_condenser_24k_all_records_v2_adapted/qwen35_35b_a3b_mca_tp4_pp2_ep2_sp_smoke17_fa3_12step.yaml
+launcher: scripts/run_qwen35_35b_a3b_mca_tp4_pp2_ep2_sp_smoke17_fa3_12step.sbatch
+parallelism: TP=4, PP=2, EP=2, CP=1, SP=true, GAS=8
+result: FAILED before first loss
+root error: Qwen3.5 attention output-gate view mismatch in
+  megatron/core/transformer/attention.py::_apply_output_gate
+```
+
+TP4/PP2 is therefore not a drop-in improvement today. The failure is a shape
+mismatch in the MCA/Megatron Qwen3.5 output-gate path, not a Slurm or memory
+issue.
+
+An experimental ADP patch now wires FLA's context-parallel causal convolution
+and `chunk_gated_delta_rule(..., cp_context=...)` into Megatron-Core's
+`GatedDeltaNet`, and relaxes Megatron-Core's configuration assertion for
+`experimental_attention_variant: gated_delta_net`. This is deliberately marked
+as experimental in `scripts/patch_llamafactory_liger_eval_skip_logits.py` and
+currently assumes microbatch size 1.
+
+```text
+job: 123873
+config: configs/full_condenser_24k_all_records_v2_adapted/qwen35_35b_a3b_mca_pp4_ep2_cp2_smoke18_fa3_12step.yaml
+launcher: scripts/run_qwen35_35b_a3b_mca_pp4_ep2_cp2_smoke18_fa3_12step.sbatch
+parallelism: TP=1, PP=4, EP=2, CP=2, SP=false, GAS=8
+result: FAILED during optimizer/grad-norm after reaching backward
+root error: NCCL CUDA OOM on a rank with only about 55 MiB free
+```
+
+This proved the patched GDN CP path can reach training/backward, but TP1 leaves
+too much state on each GPU and is not a viable layout.
+
+```text
+job: 123874
+config: configs/full_condenser_24k_all_records_v2_adapted/qwen35_35b_a3b_mca_tp2_pp2_ep2_cp2_sp_smoke19_fa3_12step.yaml
+launcher: scripts/run_qwen35_35b_a3b_mca_tp2_pp2_ep2_cp2_sp_smoke19_fa3_12step.sbatch
+parallelism: TP=2, PP=2, EP=2, CP=2, SP=true, GAS=8
+result: logged one optimizer step, then FAILED on next batch
+first logged loss: 0.9079
+first logged token/sec/GPU: 752.9
+root error: MCA CP batch slicing attempted view [1, 4, 8208] for 32834 values
+```
+
+TP2/CP2 avoids the TP1 memory cliff and gets through one step, but it is far
+too slow and then fails because MCA's CP input slicing/padding is not rounding
+the sequence shape consistently for the next batch. Context parallelism is
+therefore not yet a current speed win; it needs a real CP batching fix and
+profiling of the FLA CP kernels before it can compete with the non-CP TP2/PP4
+recipe.
+
 Open MCA memory/speed candidates after the TP2 smoke:
 
-- Implement context-parallel gated-delta attention for Qwen3.5/MCA so the 32k
-  sequence can be split across ranks without hitting the current assertion.
-  This is likely the cleanest way to make CP a valid memory-reduction path, but
-  it requires changing the Qwen3.5 gated-delta/FLA integration rather than only
-  changing YAML. The current blocker is in Megatron Core, not just
-  LLaMA-Factory: `TransformerConfig` asserts `context_parallel_size == 1` for
-  `experimental_attention_variant: gated_delta_net`, and
-  `megatron/core/ssm/gated_delta_net.py` has a TODO for
-  `GatedDeltaNetContextParallel`. The closest upstream template is
-  `megatron/core/ssm/mamba_context_parallel.py`, but gated delta will need
-  correct propagation of recurrent boundary state across CP shards rather than
-  naive sequence slicing.
+- Finish context-parallel gated-delta attention for Qwen3.5/MCA. The ADP patch
+  now gets past the old construction assertion and can log one CP step, but the
+  remaining blockers are MCA CP input padding/slicing and very poor first-step
+  throughput. The closest upstream template remains
+  `megatron/core/ssm/mamba_context_parallel.py`; gated delta still needs
+  careful recurrent-boundary state handling across CP shards.
 - If TP2 still OOMs in `l2norm_bwd_kernel`, add a reproducible ADP patch to
   constrain or pre-warm FLA's Triton l2norm backward autotuning, because job
   `123830` failed during autotune/first backward at near-full H100 memory.
-- Try a different pipeline split such as PP8/EP2 if tensor parallelism works
-  but leaves uneven late-stage memory pressure.
+- Fix the TP4 Qwen3.5 output-gate shape mismatch before retrying TP4/PP2.
+- Larger GAS improves late logged token/sec/GPU, but changes the optimizer-step
+  batch. Use it only together with deliberate learning-rate/batch-size tuning.
 
 The first two-node MCA smoke is:
 

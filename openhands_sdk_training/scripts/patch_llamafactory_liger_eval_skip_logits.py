@@ -52,6 +52,12 @@ MCA_SKIP_FINAL_SAVE_PATCH_MARKER = "# ADP patch: optionally skip MCA benchmark f
 MCA_SKIP_FINAL_PLOT_PATCH_MARKER = "# ADP patch: skip MCA loss plotting when benchmark state is skipped."
 MCA_QWEN35_LINEAR_CONFIG_PATCH_MARKER = "# ADP patch: accept Qwen3.5 linear-attention config fields."
 MCA_TP_SEQ_LENGTH_PATCH_MARKER = "# ADP patch: round MCA step sequence length for tensor parallelism."
+MCA_GDN_CP_IMPORT_PATCH_MARKER = "# ADP patch: import FLA context-parallel GDN helpers."
+MCA_GDN_CP_INIT_PATCH_MARKER = "# ADP patch: record GDN context-parallel process group."
+MCA_GDN_CP_FORWARD_PATCH_MARKER = "# ADP patch: pass FLA context-parallel metadata through GDN."
+MCA_GDN_CP_CONV_PATCH_MARKER = "# ADP patch: use FLA context-parallel causal convolution in GDN."
+MCA_GDN_CP_RULE_PATCH_MARKER = "# ADP patch: use FLA context-parallel gated-delta rule in GDN."
+MCA_GDN_CP_CONFIG_PATCH_MARKER = "# ADP patch: allow experimental GDN context parallelism."
 OLD = """        loss, generated_tokens, _ = super().prediction_step(
             model, inputs, prediction_loss_only=prediction_loss_only, ignore_keys=ignore_keys, **gen_kwargs
         )
@@ -259,6 +265,143 @@ MCA_TP_SEQ_LENGTH_NEW = f"""        if len(step_inputs) < self.args.gradient_acc
         if not self.args.allow_variable_seq_lengths():
             step_inputs = [self._pad_batched_inputs(inputs, max_seq_length) for inputs in step_inputs]
 """
+MCA_GDN_CP_IMPORT_OLD = """try:
+    from fla.modules.l2norm import l2norm
+    from fla.ops.gated_delta_rule import chunk_gated_delta_rule
+
+    HAVE_FLA = True
+except ImportError:
+    chunk_gated_delta_rule = None
+
+    HAVE_FLA = False
+"""
+MCA_GDN_CP_IMPORT_NEW = f"""try:
+    from fla.modules.conv.causal_conv1d import causal_conv1d as fla_causal_conv1d
+    from fla.modules.l2norm import l2norm
+    from fla.ops.cp import build_cp_context
+    from fla.ops.gated_delta_rule import chunk_gated_delta_rule
+
+    {MCA_GDN_CP_IMPORT_PATCH_MARKER}
+    HAVE_FLA = True
+except ImportError:
+    build_cp_context = None
+    chunk_gated_delta_rule = None
+    fla_causal_conv1d = None
+
+    HAVE_FLA = False
+"""
+MCA_GDN_CP_INIT_OLD = """        # TODO: support CP
+
+        self.reset_parameters()
+"""
+MCA_GDN_CP_INIT_NEW = f"""        self.cp_group = getattr(self.pg_collection, "cp", None)
+        self.cp_size = self.cp_group.size() if self.cp_group is not None else 1
+        {MCA_GDN_CP_INIT_PATCH_MARKER}
+
+        self.reset_parameters()
+"""
+MCA_GDN_CP_FORWARD_OLD = """        seq_len, batch, _ = hidden_states.shape
+        seq_len = seq_len * self.sp_size
+
+        if inference_context is not None:
+"""
+MCA_GDN_CP_FORWARD_NEW = f"""        seq_len, batch, _ = hidden_states.shape
+        seq_len = seq_len * self.sp_size
+
+        cp_context = None
+        if self.cp_size > 1:
+            if batch != 1:
+                raise NotImplementedError(
+                    "ADP experimental GDN context parallelism currently expects microbatch size 1."
+                )
+            global_seq_len = seq_len * self.cp_size
+            cu_seqlens_cpu = torch.tensor([0, global_seq_len], dtype=torch.long)
+            cu_seqlens = cu_seqlens_cpu.to(device=hidden_states.device, non_blocking=True)
+            {MCA_GDN_CP_FORWARD_PATCH_MARKER}
+            cp_context = build_cp_context(
+                cu_seqlens=cu_seqlens,
+                group=self.cp_group,
+                conv1d_kernel_size=self.conv_kernel_dim,
+                cu_seqlens_cpu=cu_seqlens_cpu,
+            )
+
+        if inference_context is not None:
+"""
+MCA_GDN_CP_CONV_OLD = """        if (causal_conv1d_fn is None) or self.config.deterministic_mode:
+            qkv = self.act_fn(self.conv1d(qkv)[..., :seq_len])
+        else:
+            assert self.activation in ["silu", "swish"]
+            qkv = causal_conv1d_fn(
+                x=qkv,
+                weight=self.conv1d.weight.squeeze(1),  # d, 1, w -> d, w
+                bias=self.conv1d.bias,
+                activation=self.activation,
+            )
+"""
+MCA_GDN_CP_CONV_NEW = """        if cp_context is not None:
+            assert self.activation in ["silu", "swish"]
+            # ADP patch: use FLA context-parallel causal convolution in GDN.
+            qkv, _ = fla_causal_conv1d(
+                x=qkv.transpose(1, 2).contiguous(),
+                weight=self.conv1d.weight.squeeze(1),  # d, 1, w -> d, w
+                bias=self.conv1d.bias,
+                activation=self.activation,
+                cp_context=cp_context,
+            )
+            qkv = qkv.transpose(1, 2).contiguous()
+        elif (causal_conv1d_fn is None) or self.config.deterministic_mode:
+            qkv = self.act_fn(self.conv1d(qkv)[..., :seq_len])
+        else:
+            assert self.activation in ["silu", "swish"]
+            qkv = causal_conv1d_fn(
+                x=qkv,
+                weight=self.conv1d.weight.squeeze(1),  # d, 1, w -> d, w
+                bias=self.conv1d.bias,
+                activation=self.activation,
+            )
+"""
+MCA_GDN_CP_RULE_OLD = """            core_attn_out, last_recurrent_state = chunk_gated_delta_rule(
+                query,
+                key,
+                value,
+                g=g,
+                beta=beta,
+                initial_state=None,
+                output_final_state=False,
+                use_qk_l2norm_in_kernel=False,
+            )
+"""
+MCA_GDN_CP_RULE_NEW = """            core_attn_out, last_recurrent_state = chunk_gated_delta_rule(
+                query,
+                key,
+                value,
+                g=g,
+                beta=beta,
+                initial_state=None,
+                output_final_state=False,
+                use_qk_l2norm_in_kernel=False,
+                # ADP patch: use FLA context-parallel gated-delta rule in GDN.
+                cp_context=cp_context,
+            )
+"""
+MCA_GDN_CP_CONFIG_OLD = """            # Do not support yet, but coming soon.
+            assert self.context_parallel_size == 1, (
+                f"Gated delta net does not support context parallel for now,"
+                f" but got {self.context_parallel_size=}."
+            )
+
+        if self.fp8:
+"""
+MCA_GDN_CP_CONFIG_NEW = f"""            if self.context_parallel_size != 1:
+                {MCA_GDN_CP_CONFIG_PATCH_MARKER}
+                warnings.warn(
+                    "ADP experimental patch enables GatedDeltaNet context parallelism via "
+                    "FLA operator-level CP. This path has only been smoke-tested for "
+                    "microbatch size 1."
+                )
+
+        if self.fp8:
+"""
 
 
 def patch_file(
@@ -397,6 +540,54 @@ def main() -> int:
             MCA_TP_SEQ_LENGTH_NEW,
             MCA_TP_SEQ_LENGTH_PATCH_MARKER,
             "MCA tensor-parallel sequence-length padding",
+            missing_ok=True,
+        ),
+        patch_file(
+            "megatron.core.ssm.gated_delta_net",
+            MCA_GDN_CP_IMPORT_OLD,
+            MCA_GDN_CP_IMPORT_NEW,
+            MCA_GDN_CP_IMPORT_PATCH_MARKER,
+            "MCA GDN context-parallel imports",
+            missing_ok=True,
+        ),
+        patch_file(
+            "megatron.core.ssm.gated_delta_net",
+            MCA_GDN_CP_INIT_OLD,
+            MCA_GDN_CP_INIT_NEW,
+            MCA_GDN_CP_INIT_PATCH_MARKER,
+            "MCA GDN context-parallel process group",
+            missing_ok=True,
+        ),
+        patch_file(
+            "megatron.core.ssm.gated_delta_net",
+            MCA_GDN_CP_FORWARD_OLD,
+            MCA_GDN_CP_FORWARD_NEW,
+            MCA_GDN_CP_FORWARD_PATCH_MARKER,
+            "MCA GDN context-parallel metadata",
+            missing_ok=True,
+        ),
+        patch_file(
+            "megatron.core.ssm.gated_delta_net",
+            MCA_GDN_CP_CONV_OLD,
+            MCA_GDN_CP_CONV_NEW,
+            MCA_GDN_CP_CONV_PATCH_MARKER,
+            "MCA GDN context-parallel convolution",
+            missing_ok=True,
+        ),
+        patch_file(
+            "megatron.core.ssm.gated_delta_net",
+            MCA_GDN_CP_RULE_OLD,
+            MCA_GDN_CP_RULE_NEW,
+            MCA_GDN_CP_RULE_PATCH_MARKER,
+            "MCA GDN context-parallel recurrent kernel",
+            missing_ok=True,
+        ),
+        patch_file(
+            "megatron.core.transformer.transformer_config",
+            MCA_GDN_CP_CONFIG_OLD,
+            MCA_GDN_CP_CONFIG_NEW,
+            MCA_GDN_CP_CONFIG_PATCH_MARKER,
+            "MCA GDN context-parallel config assertion",
             missing_ok=True,
         ),
     )
