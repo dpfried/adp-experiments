@@ -345,6 +345,37 @@ launcher: scripts/run_qwen35_35b_a3b_mca_tp2_pp4_ep2_smoke2.sbatch
 parallelism: TP=2, PP=4, EP=2, CP=1, GAS=8
 ```
 
+Job `123833` (`smoke2`) completed successfully:
+
+```text
+state: COMPLETED
+elapsed: 00:10:02
+exit_code: 0:0
+train_runtime: 517.4s
+train_steps_per_second: 0.023
+train_loss: 0.7112
+```
+
+The first two steps were dominated by startup/autotune, but later steps reached
+roughly 15-18 seconds per optimizer step in the progress log. The logged
+per-step throughput after warmup was typically around 15k-17k tokens/sec/GPU,
+substantially above the previous DeepSpeed hpZ8 fused-MoE smoke measurement.
+Memory was tight but no longer OOMed: the most loaded late-stage ranks on the
+second node reached roughly 79-80GB H100 memory. Transformer Engine and
+Megatron both warned that tensor/sequence-parallel overlap is fastest with:
+
+```bash
+export CUDA_DEVICE_MAX_CONNECTIONS=1
+```
+
+The follow-up smoke keeps the same TP2/PP4/EP2/CP1/GAS8 geometry and adds only
+that environment setting:
+
+```text
+config: configs/full_condenser_24k_all_records_v2_adapted/qwen35_35b_a3b_mca_tp2_pp4_ep2_smoke3.yaml
+launcher: scripts/run_qwen35_35b_a3b_mca_tp2_pp4_ep2_smoke3.sbatch
+```
+
 Open MCA memory/speed candidates after the TP2 smoke:
 
 - Implement context-parallel gated-delta attention for Qwen3.5/MCA so the 32k
