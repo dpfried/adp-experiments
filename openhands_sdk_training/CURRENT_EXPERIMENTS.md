@@ -376,6 +376,26 @@ config: configs/full_condenser_24k_all_records_v2_adapted/qwen35_35b_a3b_mca_tp2
 launcher: scripts/run_qwen35_35b_a3b_mca_tp2_pp4_ep2_smoke3.sbatch
 ```
 
+Job `123834` (`smoke3`) also completed, but it was not a speed improvement:
+
+```text
+state: COMPLETED
+elapsed: 00:10:08
+exit_code: 0:0
+train_runtime: 523.6s
+train_steps_per_second: 0.023
+train_loss: 0.7102
+```
+
+The setting did remove the Megatron/Transformer Engine warning about
+`CUDA_DEVICE_MAX_CONNECTIONS`, but late-step throughput remained essentially
+unchanged: the stable steps were again around 15k-17k tokens/sec/GPU. Peak GPU
+memory was also unchanged at roughly 80.36GB, concentrated on the last local
+pipeline ranks. This means the connection setting is harmless, but not a
+measurable throughput fix in this small smoke. The peak memory also means that
+disabling full recomputation is not viable in the current TP2/PP4/EP2 layout
+without first reducing activation/model memory elsewhere.
+
 Open MCA memory/speed candidates after the TP2 smoke:
 
 - Implement context-parallel gated-delta attention for Qwen3.5/MCA so the 32k
