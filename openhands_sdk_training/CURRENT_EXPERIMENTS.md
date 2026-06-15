@@ -259,23 +259,42 @@ config changes since smoke3: megatron-core==0.16.1, transformer_impl=transformer
                             apply_rope_fusion=false
 ```
 
-This path may still require a matching Transformer Engine runtime even though
-the import probe passes: ROLL's Qwen3.5 model asserts
+This path requires a matching Transformer Engine runtime. Smoke `123824` failed
+before model construction with:
+
+```text
+NameError: name 'TESpecProvider' is not defined
+```
+
+This comes from Megatron's experimental gated-delta attention spec. The module
+is present in `megatron-core==0.16.1`, but it only defines `TESpecProvider` when
+Transformer Engine imports successfully. ROLL's Qwen3.5 model also asserts
 `transformer_impl == "transformer_engine"` when the gated-delta attention
-variant is present, and the Megatron experimental-attention helper documents
-only the Transformer Engine backend for this path.
+variant is present, so MCA is blocked in this venv until a compatible
+Transformer Engine stack is available.
 
 For the next full run, use the best stable hpZ8 DeepSpeed recipe and switch only
 the scheduler to WSD:
 
 ```yaml
 deepspeed: ds_z3_config_qwen35_hpz8.json
+use_v1_kernels: cuda_fused_moe
 per_device_train_batch_size: 1
 gradient_accumulation_steps: 8
 lr_scheduler_type: warmup_stable_decay
 warmup_ratio: 0.03
 eval_steps: 100
 save_only_model: false
+```
+
+The prepared no-gradient-checkpointing fallback keeps the same hpZ8 and
+`cuda_fused_moe` settings, changing only `gradient_checkpointing: false` for a
+12-step smoke. This isolates activation recompute overhead from the fused-MoE
+kernel choice. The first queued job for this fallback is:
+
+```text
+job: 123825
+run: adp-bench-qwen35-35b-a3b-hpz8-cuda-fused-moe-no-gc-seq32768-smoke
 ```
 
 Both installed LLaMA-Factory `0.9.5` and the upstream `main` overlay include the
