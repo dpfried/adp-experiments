@@ -707,6 +707,66 @@ launcher: scripts/run_qwen35_35b_a3b_mca_tp2_pp8_ep1_sp_smoke13_fa3_50step.sbatc
 parallelism: TP=2, PP=8, EP=1, CP=1, SP=true, GAS=16
 ```
 
+Job `123861` (`smoke13_fa3_tp2_pp8_ep1_sp_50step`) completed:
+
+```text
+state: COMPLETED
+elapsed: about 00:22:49 by Slurm, 00:22:01.76 train runtime
+train_runtime: 1322s
+train_steps_per_second: 0.038
+train_loss: 0.6556
+```
+
+This is slower than the matched FA3 TP2/PP4/EP2 50-step baseline
+(`1091.0s`, `0.046 steps/s`) even though the late steady-state token rates
+looked reasonable. The first two optimizer steps were extremely slow
+(`1124` and `1592` tokens/sec/GPU), then later steps mostly settled in the
+roughly `10k`-`16k` tokens/sec/GPU range. Excluding the first 10 logged steps,
+the mean sampled rate was about `12.9k` tokens/sec/GPU, but the deeper PP8
+pipeline and GAS16 still produced worse end-to-end throughput. Peak sampled
+memory was much lower than the original PP4 run on most stages, but the late
+pipeline ranks still reached about `76.8 GiB`.
+
+Two warnings are worth carrying forward as possible overhead clues:
+
+```text
+Non-interleaved pipeline parallelism does not support overlapping p2p communication.
+The next bucket's parameter all-gather operation has already been dispatched.
+The AccumulateGrad node's stream does not match the stream of the node that produced the incoming gradient.
+```
+
+The next follow-up keeps the faster TP2/PP4/EP2 topology but enables virtual
+pipeline interleaving so p2p overlap may be effective without increasing
+pipeline depth:
+
+```text
+job: 123864
+config: configs/full_condenser_24k_all_records_v2_adapted/qwen35_35b_a3b_mca_tp2_pp4_ep2_vp2_smoke14_fa3_50step.yaml
+launcher: scripts/run_qwen35_35b_a3b_mca_tp2_pp4_ep2_vp2_smoke14_fa3_50step.sbatch
+parallelism: TP=2, PP=4, EP=2, CP=1, VP=2, GAS=8
+```
+
+Job `123864` (`smoke14_fa3_tp2_pp4_ep2_vp2_50step`) was cancelled after
+the 10-step burn-in because it was clearly slower than the baseline:
+
+```text
+state: CANCELLED by operator after 11 logged losses
+non_interleaved_p2p_warning_count: 0
+param_allgather_warning_count: 0
+accumulategrad_warning_count: 16
+tokens/sec/GPU samples:
+  1163, 3197, 9797, 4537, 5534, 5239, 5940, 4859, 6355, 6301, 6007
+mean from logged step 3 onward: about 6063 tokens/sec/GPU
+progress after burn-in: roughly 46-55 seconds/step
+peak sampled memory: up to about 81.0 GiB on local rank 4 of the second node
+```
+
+This confirms that simply enabling virtual pipeline interleaving is not an
+efficiency fix here. It removes the non-interleaved p2p warning, but the
+schedule overhead and memory pressure are much worse than the plain PP4 FA3
+baseline. Keep `qwen35_35b_a3b_mca_tp2_pp4_ep2_smoke7_fa3_50step.yaml` as the
+best measured MCA recipe so far.
+
 Open MCA memory/speed candidates after the TP2 smoke:
 
 - Implement context-parallel gated-delta attention for Qwen3.5/MCA so the 32k
