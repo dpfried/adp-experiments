@@ -15,7 +15,7 @@ if [ -z "$DATASET" ]; then
   exit 2
 fi
 
-SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+SCRIPT_DIR=${ADP_EXPERIMENTS_SCRIPT_DIR:-/home/gneubig/workspace/project/b0ec6769629643e9b4eb723ca0e440cf/adp-experiments/openhands_sdk_training/scripts}
 
 export ADP_REPO=${ADP_REPO:-/home/gneubig/workspace/project/b0ec6769629643e9b4eb723ca0e440cf/agent-data-protocol}
 export ADP_EXP_ROOT=${ADP_EXP_ROOT:-/home/gneubig/exp/adp}
