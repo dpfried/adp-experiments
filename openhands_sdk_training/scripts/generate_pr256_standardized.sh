@@ -77,7 +77,11 @@ install_dataset_requirements() {
     flock 9
     if [ ! -e "$marker" ]; then
       echo "dataset_requirements=installing file=$req_file"
-      "$PYTHON" -m pip install -r "$req_file"
+      if "$PYTHON" -m pip --version >/dev/null 2>&1; then
+        "$PYTHON" -m pip install -r "$req_file"
+      else
+        uv pip install --python "$PYTHON" -r "$req_file"
+      fi
       touch "$marker"
     fi
   ) 9>"$lock_file"
