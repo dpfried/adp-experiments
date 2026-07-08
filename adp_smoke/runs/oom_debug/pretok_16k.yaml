@@ -1,0 +1,16 @@
+model_name_or_path: Qwen/Qwen3.5-4B-Base
+trust_remote_code: true
+stage: sft
+do_train: true
+finetuning_type: full
+dataset: paper_openhands_nonweb_train_clean_mm_safe
+eval_dataset: paper_openhands_nonweb_eval_clean_mm_safe
+dataset_dir: /home/dfried/exp/adp-smoke/datasets/swesmith_probe
+template: qwen3_5_nothink
+cutoff_len: 16384
+overwrite_cache: true
+preprocessing_num_workers: 4
+tokenized_path: /home/dfried/exp/adp-smoke/datasets/swesmith_probe/tok_16k
+output_dir: /tmp/pretok16k_out
+overwrite_output_dir: true
+bf16: true

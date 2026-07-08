@@ -1,0 +1,9 @@
+checkpoint,step,eval_loss,eval_tokens,n_examples,seconds
+/home/dfried/exp/adp-smoke/runs/swesmith_4b_full/output/checkpoint-250,250,0.131162,460864,100,307.9
+/home/dfried/exp/adp-smoke/runs/swesmith_4b_full/output/checkpoint-200,200,0.133368,460864,100,228.5
+/home/dfried/exp/adp-smoke/runs/swesmith_4b_full/output/checkpoint-150,150,0.13647,460864,100,230.4
+/home/dfried/exp/adp-smoke/runs/swesmith_4b_full/output/checkpoint-300,300,0.129209,460864,100,230.0
+/home/dfried/exp/adp-smoke/runs/swesmith_4b_full/output/checkpoint-350,350,0.126991,460864,100,229.9
+/home/dfried/exp/adp-smoke/runs/swesmith_4b_full/output/checkpoint-450,450,0.124969,460864,100,248.1
+/home/dfried/exp/adp-smoke/runs/swesmith_4b_full/output/checkpoint-500,500,0.124395,460864,100,231.7
+/home/dfried/exp/adp-smoke/runs/swesmith_4b_full/output/checkpoint-540,540,0.124368,460864,100,232.1

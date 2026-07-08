@@ -1,0 +1,2 @@
+checkpoint,step,eval_loss,eval_tokens,n_examples,seconds
+/home/dfried/exp/adp-smoke/runs/paper_nonweb_4b/output/checkpoint-50,50,0.260486,433992,290,319.7

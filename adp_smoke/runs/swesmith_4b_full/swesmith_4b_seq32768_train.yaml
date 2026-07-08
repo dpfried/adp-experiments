@@ -1,0 +1,49 @@
+### model
+model_name_or_path: Qwen/Qwen3.5-4B-Base
+trust_remote_code: true
+enable_liger_kernel: true
+flash_attn: sdpa                 # fa2 not built in this venv; sdpa is memory-efficient & needs no build
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: /home/dfried/exp/adp-smoke/.cache/LLaMA-Factory/examples/deepspeed/ds_z3_config.json   # stock config; overlap_comm:true correlated with 8-GPU NCCL init hangs (jobs 9043143, 9072332)
+
+### dataset (loads pre-built tokenized cache; no tokenization under torchrun)
+dataset: paper_openhands_nonweb_train_clean_mm_safe
+eval_dataset: paper_openhands_nonweb_eval_clean_mm_safe
+dataset_dir: /home/dfried/exp/adp-smoke/datasets/swesmith_full
+template: qwen3_5_nothink
+cutoff_len: 32768
+overwrite_cache: false
+preprocessing_num_workers: 8
+dataloader_num_workers: 2
+tokenized_path: /home/dfried/exp/adp-smoke/datasets/swesmith_full/tokenized_qwen35_4b_seq32768
+
+### output (output_dir overridden by the sbatch to /data if available)
+output_dir: /home/dfried/exp/adp-smoke/runs/swesmith_4b_full/output
+logging_steps: 5
+save_steps: 50
+save_total_limit: 3
+save_only_model: true
+plot_loss: true
+overwrite_output_dir: true
+report_to: wandb
+run_name: adp-swesmith-4b-seq32768
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 4   # 8 GPUs x ga4 = effective batch 32 (was 4 GPUs x ga8)
+learning_rate: 1.0e-5
+num_train_epochs: 1
+lr_scheduler_type: cosine
+warmup_ratio: 0.03
+bf16: true
+fp16: false
+gradient_checkpointing: true
+ddp_timeout: 180000000
+resume_from_checkpoint: null
+
+### eval (disabled: Liger 32k eval materializes full logits -> OOM without Graham's patch)
+eval_strategy: "no"

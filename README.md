@@ -8,6 +8,9 @@ Current contents:
 - `openhands_sdk_training/`: reproduce the original Qwen3.5 0.8B
   LLaMA-Factory run and track the current Qwen3.5 4B/9B OpenHands SDK
   condenser SFT experiments.
+- `adp_smoke/`: Qwen3.5 4B fine-tunes on ADP subsets (swe-smith, paper
+  openhands_nonweb) plus SWE-bench eval harness, on CMU's Babel cluster
+  (dfried). Includes pinned environment snapshots under `adp_smoke/env/`.
 
 ## Local Workspace Convention
 

@@ -1,0 +1,11 @@
+{
+  "model": "hosted_vllm/adp-swesmith-4b",
+  "base_url": "http://127.0.0.1:8012/v1",
+  "api_key": "EMPTY",
+  "temperature": 0.0,
+  "max_output_tokens": 4096,
+  "timeout": 600,
+  "num_retries": 3,
+  "native_tool_calling": true,
+  "custom_tokenizer": "/data/tir/projects/tir1/users/dfried/exp/adp-smoke/runs/swesmith_4b_full/output/checkpoint-540"
+}
