@@ -1,0 +1,762 @@
+{
+  "swe-smith": {
+    "group": "old_mix",
+    "n_sampled": 500,
+    "n_shards": 1,
+    "shard_bytes_total": 4897872857,
+    "manifest_std_lines": 32360,
+    "manifest_condensation_lines": 74658,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "finish": 55.0,
+      "message_only": 24.2,
+      "edit": 13.6,
+      "exec": 7.2
+    },
+    "final_tool_top": {
+      "finish": 55.0,
+      "-": 24.2,
+      "file_editor": 13.6,
+      "terminal": 7.2
+    },
+    "pct_any_edit": 74.8,
+    "pct_edit_last3": 41.0,
+    "pct_any_test": 69.8,
+    "pct_has_diff": 32.8,
+    "pct_continuation_segment": 31.6,
+    "segment_multiplier": 2.31,
+    "mean_messages": 29.5,
+    "mean_assistant_turns": 13.8,
+    "mean_chars": 45644,
+    "distinct_tool_inventories": 2,
+    "most_common_tools": [
+      "terminal",
+      "file_editor",
+      "finish",
+      "think"
+    ]
+  },
+  "swe-gym_openhands_sampled_trajectories": {
+    "group": "old_mix",
+    "n_sampled": 500,
+    "n_shards": 1,
+    "shard_bytes_total": 700024242,
+    "manifest_std_lines": 6055,
+    "manifest_condensation_lines": 12186,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "edit": 56.4,
+      "finish": 22.0,
+      "message_only": 15.0,
+      "exec": 6.6
+    },
+    "final_tool_top": {
+      "file_editor": 56.4,
+      "finish": 22.0,
+      "-": 15.0,
+      "terminal": 6.6
+    },
+    "pct_any_edit": 86.6,
+    "pct_edit_last3": 66.8,
+    "pct_any_test": 31.8,
+    "pct_has_diff": 0.0,
+    "pct_continuation_segment": 15.2,
+    "segment_multiplier": 2.01,
+    "mean_messages": 20.1,
+    "mean_assistant_turns": 9.2,
+    "mean_chars": 35876,
+    "distinct_tool_inventories": 2,
+    "most_common_tools": [
+      "terminal",
+      "file_editor",
+      "finish",
+      "think"
+    ]
+  },
+  "nebius_SWE-agent-trajectories": {
+    "group": "old_mix",
+    "n_sampled": 497,
+    "n_shards": 1,
+    "shard_bytes_total": 9240179566,
+    "manifest_std_lines": 80036,
+    "manifest_condensation_lines": 137154,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "exec": 82.1,
+      "message_only": 17.9
+    },
+    "final_tool_top": {
+      "terminal": 82.1,
+      "-": 17.9
+    },
+    "pct_any_edit": 75.9,
+    "pct_edit_last3": 65.6,
+    "pct_any_test": 45.1,
+    "pct_has_diff": 0.4,
+    "pct_continuation_segment": 21.6,
+    "segment_multiplier": 1.71,
+    "mean_messages": 33.9,
+    "mean_assistant_turns": 16.1,
+    "mean_chars": 50298,
+    "distinct_tool_inventories": 2,
+    "most_common_tools": [
+      "terminal",
+      "file_editor",
+      "finish",
+      "think"
+    ]
+  },
+  "openhands": {
+    "group": "old_mix",
+    "n_sampled": 496,
+    "n_shards": 1,
+    "shard_bytes_total": 49739288,
+    "manifest_std_lines": 275,
+    "manifest_condensation_lines": 857,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "message_only": 48.2,
+      "exec": 38.5,
+      "finish": 10.3,
+      "browser": 3.0
+    },
+    "final_tool_top": {
+      "-": 48.2,
+      "terminal": 38.5,
+      "finish": 10.1,
+      "browser_click": 1.2,
+      "goto": 1.0,
+      "scroll": 0.4,
+      "send_msg_to_user": 0.2,
+      "browser_get_state": 0.2
+    },
+    "pct_any_edit": 17.5,
+    "pct_edit_last3": 11.5,
+    "pct_any_test": 12.1,
+    "pct_has_diff": 1.0,
+    "pct_continuation_segment": 50.6,
+    "segment_multiplier": 3.12,
+    "mean_messages": 21.6,
+    "mean_assistant_turns": 9.9,
+    "mean_chars": 34208,
+    "distinct_tool_inventories": 2,
+    "most_common_tools": [
+      "terminal",
+      "browser_navigate",
+      "browser_click",
+      "browser_get_state",
+      "browser_get_content",
+      "browser_type",
+      "browser_scroll",
+      "browser_go_back",
+      "browser_list_tabs",
+      "browser_switch_tab",
+      "browser_close_tab",
+      "browser_get_storage",
+      "browser_set_storage",
+      "browser_start_recording",
+      "browser_stop_recording",
+      "crawl",
+      "delegate_to_CrawlAgent",
+      "delegate_to_RagAgent",
+      "delegate_to_agent",
+      "goto",
+      "rag_search",
+      "scroll",
+      "send_msg_to_user",
+      "finish",
+      "think"
+    ]
+  },
+  "codeactinstruct": {
+    "group": "old_mix",
+    "n_sampled": 500,
+    "n_shards": 1,
+    "shard_bytes_total": 227811152,
+    "manifest_std_lines": 7139,
+    "manifest_condensation_lines": 7139,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "message_only": 73.4,
+      "exec": 26.6
+    },
+    "final_tool_top": {
+      "-": 73.4,
+      "terminal": 26.6
+    },
+    "pct_any_edit": 0.0,
+    "pct_edit_last3": 0.0,
+    "pct_any_test": 0.0,
+    "pct_has_diff": 0.0,
+    "pct_continuation_segment": 0.0,
+    "segment_multiplier": 1.0,
+    "mean_messages": 8.0,
+    "mean_assistant_turns": 3.4,
+    "mean_chars": 16676,
+    "distinct_tool_inventories": 1,
+    "most_common_tools": [
+      "terminal",
+      "clean",
+      "close_receptacle",
+      "cool",
+      "goto",
+      "heat",
+      "look",
+      "open_receptacle",
+      "put",
+      "take_from",
+      "toggle",
+      "use",
+      "wikipedia_search",
+      "finish",
+      "think"
+    ]
+  },
+  "code_feedback": {
+    "group": "old_mix",
+    "n_sampled": 500,
+    "n_shards": 1,
+    "shard_bytes_total": 1721575079,
+    "manifest_std_lines": 66383,
+    "manifest_condensation_lines": 66383,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "exec": 53.0,
+      "message_only": 47.0
+    },
+    "final_tool_top": {
+      "terminal": 53.0,
+      "-": 47.0
+    },
+    "pct_any_edit": 0.4,
+    "pct_edit_last3": 0.4,
+    "pct_any_test": 0.0,
+    "pct_has_diff": 0.0,
+    "pct_continuation_segment": 0.0,
+    "segment_multiplier": 1.0,
+    "mean_messages": 7.0,
+    "mean_assistant_turns": 2.6,
+    "mean_chars": 17307,
+    "distinct_tool_inventories": 1,
+    "most_common_tools": [
+      "terminal",
+      "finish",
+      "think"
+    ]
+  },
+  "orca_agentinstruct": {
+    "group": "old_mix",
+    "n_sampled": 425,
+    "n_shards": 5,
+    "shard_bytes_total": 22876691821,
+    "manifest_std_lines": 1046410,
+    "manifest_condensation_lines": 1046772,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "message_only": 100.0
+    },
+    "final_tool_top": {
+      "-": 100.0
+    },
+    "pct_any_edit": 0.0,
+    "pct_edit_last3": 0.0,
+    "pct_any_test": 0.0,
+    "pct_has_diff": 0.0,
+    "pct_continuation_segment": 0.0,
+    "segment_multiplier": 1.0,
+    "mean_messages": 3.0,
+    "mean_assistant_turns": 1.0,
+    "mean_chars": 18674,
+    "distinct_tool_inventories": 1,
+    "most_common_tools": [
+      "finish",
+      "think"
+    ]
+  },
+  "synatra": {
+    "group": "old_mix",
+    "n_sampled": 500,
+    "n_shards": 1,
+    "shard_bytes_total": 3437627406,
+    "manifest_std_lines": 99924,
+    "manifest_condensation_lines": 99924,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "message_only": 100.0
+    },
+    "final_tool_top": {
+      "-": 100.0
+    },
+    "pct_any_edit": 0.0,
+    "pct_edit_last3": 0.0,
+    "pct_any_test": 0.0,
+    "pct_has_diff": 0.0,
+    "pct_continuation_segment": 0.0,
+    "segment_multiplier": 1.0,
+    "mean_messages": 3.0,
+    "mean_assistant_turns": 1.0,
+    "mean_chars": 17262,
+    "distinct_tool_inventories": 1,
+    "most_common_tools": [
+      "browser_navigate",
+      "browser_click",
+      "browser_get_state",
+      "browser_get_content",
+      "browser_type",
+      "browser_scroll",
+      "browser_go_back",
+      "browser_list_tabs",
+      "browser_switch_tab",
+      "browser_close_tab",
+      "browser_get_storage",
+      "browser_set_storage",
+      "browser_start_recording",
+      "browser_stop_recording",
+      "finish",
+      "think"
+    ]
+  },
+  "nvidia_SWE-Zero-openhands-trajectories": {
+    "group": "new_swe",
+    "n_sampled": 500,
+    "n_shards": 13,
+    "shard_bytes_total": 63353395012,
+    "manifest_std_lines": 318115,
+    "manifest_condensation_lines": 956294,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "finish": 40.8,
+      "message_only": 30.8,
+      "edit": 20.6,
+      "exec": 5.8,
+      "think": 2.0
+    },
+    "final_tool_top": {
+      "finish": 40.8,
+      "-": 30.8,
+      "file_editor": 20.6,
+      "terminal": 5.8,
+      "think": 2.0
+    },
+    "pct_any_edit": 69.2,
+    "pct_edit_last3": 55.2,
+    "pct_any_test": 27.6,
+    "pct_has_diff": 7.8,
+    "pct_continuation_segment": 44.5,
+    "segment_multiplier": 3.01,
+    "mean_messages": 31.3,
+    "mean_assistant_turns": 15.0,
+    "mean_chars": 47423,
+    "distinct_tool_inventories": 2,
+    "most_common_tools": [
+      "terminal",
+      "file_editor",
+      "finish",
+      "think"
+    ]
+  },
+  "coderforge_preview": {
+    "group": "new_swe",
+    "n_sampled": 500,
+    "n_shards": 12,
+    "shard_bytes_total": 55233684966,
+    "manifest_std_lines": 155144,
+    "manifest_condensation_lines": 709580,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "message_only": 39.8,
+      "exec": 20.4,
+      "finish": 20.4,
+      "edit": 18.6,
+      "think": 0.8
+    },
+    "final_tool_top": {
+      "-": 39.8,
+      "terminal": 20.4,
+      "finish": 20.4,
+      "file_editor": 18.6,
+      "think": 0.8
+    },
+    "pct_any_edit": 60.2,
+    "pct_edit_last3": 35.4,
+    "pct_any_test": 58.6,
+    "pct_has_diff": 1.2,
+    "pct_continuation_segment": 65.8,
+    "segment_multiplier": 4.57,
+    "mean_messages": 29.9,
+    "mean_assistant_turns": 14.3,
+    "mean_chars": 60372,
+    "distinct_tool_inventories": 2,
+    "most_common_tools": [
+      "terminal",
+      "file_editor",
+      "finish",
+      "think"
+    ]
+  },
+  "scale_swe_distilled": {
+    "group": "new_swe",
+    "n_sampled": 500,
+    "n_shards": 6,
+    "shard_bytes_total": 26131851120,
+    "manifest_std_lines": 71498,
+    "manifest_condensation_lines": 394399,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "message_only": 42.4,
+      "edit": 23.6,
+      "exec": 18.8,
+      "finish": 15.2
+    },
+    "final_tool_top": {
+      "-": 42.4,
+      "file_editor": 23.6,
+      "terminal": 18.8,
+      "finish": 15.2
+    },
+    "pct_any_edit": 57.0,
+    "pct_edit_last3": 38.4,
+    "pct_any_test": 47.8,
+    "pct_has_diff": 14.0,
+    "pct_continuation_segment": 73.3,
+    "segment_multiplier": 5.52,
+    "mean_messages": 31.4,
+    "mean_assistant_turns": 15.0,
+    "mean_chars": 49056,
+    "distinct_tool_inventories": 2,
+    "most_common_tools": [
+      "terminal",
+      "file_editor",
+      "finish",
+      "think"
+    ]
+  },
+  "logicstar_swe-star": {
+    "group": "new_swe",
+    "n_sampled": 500,
+    "n_shards": 6,
+    "shard_bytes_total": 26680817358,
+    "manifest_std_lines": 102761,
+    "manifest_condensation_lines": 389530,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "message_only": 36.8,
+      "finish": 26.8,
+      "edit": 18.4,
+      "exec": 16.6,
+      "think": 1.4
+    },
+    "final_tool_top": {
+      "-": 36.8,
+      "finish": 26.8,
+      "file_editor": 18.4,
+      "terminal": 16.6,
+      "think": 1.4
+    },
+    "pct_any_edit": 63.2,
+    "pct_edit_last3": 35.2,
+    "pct_any_test": 61.6,
+    "pct_has_diff": 5.6,
+    "pct_continuation_segment": 57.9,
+    "segment_multiplier": 3.79,
+    "mean_messages": 40.2,
+    "mean_assistant_turns": 19.5,
+    "mean_chars": 44295,
+    "distinct_tool_inventories": 2,
+    "most_common_tools": [
+      "terminal",
+      "file_editor",
+      "finish",
+      "think"
+    ]
+  },
+  "nebius_SWE-rebench-openhands-trajectories": {
+    "group": "new_swe",
+    "n_sampled": 500,
+    "n_shards": 3,
+    "shard_bytes_total": 13719079414,
+    "manifest_std_lines": 32161,
+    "manifest_condensation_lines": 181359,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "message_only": 40.6,
+      "finish": 20.4,
+      "edit": 18.8,
+      "exec": 18.8,
+      "think": 1.4
+    },
+    "final_tool_top": {
+      "-": 40.6,
+      "finish": 20.4,
+      "file_editor": 18.8,
+      "terminal": 18.8,
+      "think": 1.4
+    },
+    "pct_any_edit": 59.2,
+    "pct_edit_last3": 36.6,
+    "pct_any_test": 58.0,
+    "pct_has_diff": 12.0,
+    "pct_continuation_segment": 68.0,
+    "segment_multiplier": 5.64,
+    "mean_messages": 30.2,
+    "mean_assistant_turns": 14.5,
+    "mean_chars": 55986,
+    "distinct_tool_inventories": 2,
+    "most_common_tools": [
+      "terminal",
+      "file_editor",
+      "task_tracker",
+      "finish",
+      "think"
+    ]
+  },
+  "mini-coder": {
+    "group": "new_swe",
+    "n_sampled": 500,
+    "n_shards": 1,
+    "shard_bytes_total": 5246654048,
+    "manifest_std_lines": 84346,
+    "manifest_condensation_lines": 82406,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "exec": 100.0
+    },
+    "final_tool_top": {
+      "terminal": 100.0
+    },
+    "pct_any_edit": 99.6,
+    "pct_edit_last3": 42.2,
+    "pct_any_test": 55.2,
+    "pct_has_diff": 23.2,
+    "pct_continuation_segment": 0.0,
+    "segment_multiplier": 0.98,
+    "mean_messages": 50.3,
+    "mean_assistant_turns": 24.2,
+    "mean_chars": 44253,
+    "distinct_tool_inventories": 1,
+    "most_common_tools": [
+      "terminal",
+      "finish",
+      "think"
+    ]
+  },
+  "kwai-klear_swe-smith-mini_swe_agent_plus-trajectories-66k": {
+    "group": "new_swe",
+    "n_sampled": 500,
+    "n_shards": 1,
+    "shard_bytes_total": 2592834210,
+    "manifest_std_lines": 65994,
+    "manifest_condensation_lines": 36637,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "exec": 85.4,
+      "message_only": 14.6
+    },
+    "final_tool_top": {
+      "terminal": 85.4,
+      "-": 14.6
+    },
+    "pct_any_edit": 85.4,
+    "pct_edit_last3": 70.4,
+    "pct_any_test": 63.0,
+    "pct_has_diff": 2.0,
+    "pct_continuation_segment": 17.1,
+    "segment_multiplier": 0.56,
+    "mean_messages": 40.9,
+    "mean_assistant_turns": 19.6,
+    "mean_chars": 48924,
+    "distinct_tool_inventories": 2,
+    "most_common_tools": [
+      "terminal",
+      "finish",
+      "think"
+    ]
+  },
+  "SALT-NLP_SWE-chat": {
+    "group": "new_swe",
+    "n_sampled": 500,
+    "n_shards": 1,
+    "shard_bytes_total": 2498739004,
+    "manifest_std_lines": 6122,
+    "manifest_condensation_lines": 40427,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "message_only": 58.8,
+      "edit": 18.4,
+      "other": 8.0,
+      "think": 7.6,
+      "exec": 7.2
+    },
+    "final_tool_top": {
+      "-": 58.8,
+      "file_editor": 18.4,
+      "generic_tool": 8.0,
+      "think": 7.6,
+      "terminal": 7.2
+    },
+    "pct_any_edit": 60.8,
+    "pct_edit_last3": 49.6,
+    "pct_any_test": 19.4,
+    "pct_has_diff": 13.2,
+    "pct_continuation_segment": 57.6,
+    "segment_multiplier": 6.6,
+    "mean_messages": 34.7,
+    "mean_assistant_turns": 12.3,
+    "mean_chars": 36456,
+    "distinct_tool_inventories": 3,
+    "most_common_tools": [
+      "terminal",
+      "file_editor",
+      "web_search",
+      "generic_tool",
+      "finish",
+      "think"
+    ]
+  },
+  "swe-play-trajectories": {
+    "group": "new_swe",
+    "n_sampled": 500,
+    "n_shards": 1,
+    "shard_bytes_total": 236700793,
+    "manifest_std_lines": 704,
+    "manifest_condensation_lines": 2818,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "message_only": 37.6,
+      "exec": 34.4,
+      "edit": 24.4,
+      "think": 3.2,
+      "finish": 0.4
+    },
+    "final_tool_top": {
+      "-": 37.6,
+      "terminal": 34.4,
+      "file_editor": 24.4,
+      "think": 3.2,
+      "finish": 0.4
+    },
+    "pct_any_edit": 60.4,
+    "pct_edit_last3": 39.6,
+    "pct_any_test": 29.8,
+    "pct_has_diff": 0.2,
+    "pct_continuation_segment": 60.3,
+    "segment_multiplier": 4.0,
+    "mean_messages": 24.4,
+    "mean_assistant_turns": 11.6,
+    "mean_chars": 66031,
+    "distinct_tool_inventories": 2,
+    "most_common_tools": [
+      "terminal",
+      "file_editor",
+      "finish",
+      "think"
+    ]
+  },
+  "hybrid-gym": {
+    "group": "new_swe",
+    "n_sampled": 500,
+    "n_shards": 1,
+    "shard_bytes_total": 525804231,
+    "manifest_std_lines": 4470,
+    "manifest_condensation_lines": 8076,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "finish": 41.2,
+      "edit": 28.2,
+      "message_only": 22.6,
+      "exec": 6.8,
+      "think": 1.2
+    },
+    "final_tool_top": {
+      "finish": 41.2,
+      "file_editor": 28.2,
+      "-": 22.6,
+      "terminal": 6.8,
+      "think": 1.2
+    },
+    "pct_any_edit": 77.4,
+    "pct_edit_last3": 68.2,
+    "pct_any_test": 10.0,
+    "pct_has_diff": 3.0,
+    "pct_continuation_segment": 28.9,
+    "segment_multiplier": 1.81,
+    "mean_messages": 26.7,
+    "mean_assistant_turns": 12.6,
+    "mean_chars": 47201,
+    "distinct_tool_inventories": 2,
+    "most_common_tools": [
+      "terminal",
+      "file_editor",
+      "finish",
+      "think"
+    ]
+  },
+  "codescout": {
+    "group": "new_swe",
+    "n_sampled": 499,
+    "n_shards": 1,
+    "shard_bytes_total": 3049651606,
+    "manifest_std_lines": 58871,
+    "manifest_condensation_lines": 62107,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "finish": 90.2,
+      "message_only": 6.4,
+      "exec": 3.4
+    },
+    "final_tool_top": {
+      "finish": 90.2,
+      "-": 6.4,
+      "terminal": 3.4
+    },
+    "pct_any_edit": 0.0,
+    "pct_edit_last3": 0.0,
+    "pct_any_test": 0.0,
+    "pct_has_diff": 0.0,
+    "pct_continuation_segment": 0.8,
+    "segment_multiplier": 1.05,
+    "mean_messages": 14.5,
+    "mean_assistant_turns": 5.8,
+    "mean_chars": 28618,
+    "distinct_tool_inventories": 2,
+    "most_common_tools": [
+      "terminal",
+      "finish",
+      "think"
+    ]
+  },
+  "openthoughts_agent_sft": {
+    "group": "new_swe",
+    "n_sampled": 500,
+    "n_shards": 1,
+    "shard_bytes_total": 7718533164,
+    "manifest_std_lines": 94334,
+    "manifest_condensation_lines": 126566,
+    "manifest_llm_model": "litellm_proxy/minimax-m2.7",
+    "final_class_pct": {
+      "exec": 46.8,
+      "finish": 26.8,
+      "message_only": 26.4
+    },
+    "final_tool_top": {
+      "terminal": 46.8,
+      "finish": 26.8,
+      "-": 26.4
+    },
+    "pct_any_edit": 52.6,
+    "pct_edit_last3": 14.0,
+    "pct_any_test": 52.8,
+    "pct_has_diff": 16.2,
+    "pct_continuation_segment": 25.7,
+    "segment_multiplier": 1.34,
+    "mean_messages": 31.5,
+    "mean_assistant_turns": 12.8,
+    "mean_chars": 52786,
+    "distinct_tool_inventories": 2,
+    "most_common_tools": [
+      "terminal",
+      "finish",
+      "think"
+    ]
+  }
+}

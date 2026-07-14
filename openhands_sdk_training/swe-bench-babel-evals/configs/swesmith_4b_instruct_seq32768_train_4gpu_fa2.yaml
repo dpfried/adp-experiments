@@ -1,0 +1,56 @@
+### model — INSTRUCT init (Qwen's post-trained model) instead of -Base;
+### tokenizer encoding verified identical to Base, so the Base-built
+### tokenized cache is reused as-is. Everything else matches the
+### swesmith_4b_full 4-GPU FA2 recipe for a clean init-only comparison.
+model_name_or_path: Qwen/Qwen3.5-4B
+trust_remote_code: true
+enable_liger_kernel: true
+flash_attn: fa2   # requires patch_transformers_fa2_s_aux.py + sm89 wheel
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: /home/dfried/exp/adp-smoke/.cache/LLaMA-Factory/examples/deepspeed/ds_z3_config.json   # stock config; overlap_comm:true correlated with 8-GPU NCCL init hangs (jobs 9043143, 9072332)
+
+### dataset (loads pre-built tokenized cache; no tokenization under torchrun)
+dataset: paper_openhands_nonweb_train_clean_mm_safe
+eval_dataset: paper_openhands_nonweb_eval_clean_mm_safe
+dataset_dir: /home/dfried/exp/adp-smoke/datasets/swesmith_full
+template: qwen3_5_nothink
+cutoff_len: 32768
+overwrite_cache: false
+preprocessing_num_workers: 8
+dataloader_num_workers: 2
+tokenized_path: /home/dfried/exp/adp-smoke/datasets/swesmith_full/tokenized_qwen35_4b_seq32768
+
+### output (output_dir overridden by the sbatch to tir1)
+output_dir: /home/dfried/exp/adp-smoke/runs/swesmith_4b_instruct/output
+logging_steps: 5
+save_steps: 50
+save_total_limit: 3
+save_only_model: true
+plot_loss: true
+overwrite_output_dir: true
+report_to: wandb
+run_name: adp-swesmith-4b-instruct-4gpu-fa2
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8   # 4 GPUs x ga8 = effective batch 32
+learning_rate: 1.0e-5
+num_train_epochs: 1
+lr_scheduler_type: cosine
+warmup_ratio: 0.03
+bf16: true
+fp16: false
+gradient_checkpointing: true
+ddp_timeout: 180000000
+resume_from_checkpoint: null
+
+### eval (in-training; safe at 32k via patch_llamafactory_liger_eval_skip_logits.py.
+### 100-example validation split from the tokenized cache.)
+eval_strategy: steps
+eval_steps: 50
+per_device_eval_batch_size: 1
+prediction_loss_only: true

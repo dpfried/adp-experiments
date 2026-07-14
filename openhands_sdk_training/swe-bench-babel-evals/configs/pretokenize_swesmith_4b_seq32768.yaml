@@ -1,0 +1,20 @@
+### minimal config for standalone pre-tokenization (no deepspeed, no model load)
+model_name_or_path: Qwen/Qwen3.5-4B-Base
+trust_remote_code: true
+
+stage: sft
+do_train: true
+finetuning_type: full
+
+dataset: paper_openhands_nonweb_train_clean_mm_safe
+eval_dataset: paper_openhands_nonweb_eval_clean_mm_safe
+dataset_dir: /home/dfried/exp/adp-smoke/datasets/swesmith_full
+template: qwen3_5_nothink
+cutoff_len: 32768
+overwrite_cache: false
+preprocessing_num_workers: 8
+tokenized_path: /home/dfried/exp/adp-smoke/datasets/swesmith_full/tokenized_qwen35_4b_seq32768
+
+output_dir: /home/dfried/exp/adp-smoke/runs/swesmith_4b_full/pretok_tmp
+overwrite_output_dir: true
+bf16: true
