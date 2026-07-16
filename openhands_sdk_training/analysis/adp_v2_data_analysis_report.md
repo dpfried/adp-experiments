@@ -201,6 +201,25 @@ scaled run is the best-final-model play. Caveat to keep in mind when reading the
 weights are a proxy for data-mix weights (averaging functions ≠ joint training), so the scaled run
 is also the test of that proxy.
 
+**Supporting literature.** Direct precedent for the coefficients-as-mixture-weights step:
+**DEM** (Ram et al., arXiv:2406.15570, EMNLP 2024) trains per-distribution models from a shared
+init and combines distribution vectors with validation-tuned coefficients as a substitute for data
+mixing; **DeMix** (Li et al., arXiv:2602.00747) makes the readout explicit — merge coefficients
+over per-source component models set the mixture ratios for the subsequent real training run (see
+also MergeMix, arXiv:2601.17858, and arXiv:2602.04937 for the same idea in multimodal mixing);
+**Branch-Train-Merge** (Li et al., arXiv:2208.03306) established the parallel
+per-domain-experts-then-merge paradigm for LMs. The merge operation itself: **Model Soups**
+(Wortsman et al., arXiv:2203.05482) for uniform/greedy averaging of shared-init fine-tunes;
+**task arithmetic** (Ilharco et al., arXiv:2212.04089) for additive task vectors and the global-λ
+scaling (often peaking at λ≠1 — our step 4); **TIES** (Yadav et al., arXiv:2306.01708) and
+**DARE** (Yu et al., arXiv:2311.03099) as fallbacks if sign-interference hurts plain linear soups
+(unlikely here — same-task, same-domain fine-tunes). Same-init averaging is sound because
+fine-tunes from a shared init stay linearly mode-connected (Frankle et al., arXiv:1912.05671;
+Neyshabur et al., arXiv:2008.11687) — our matched-init, matched-55K arms are deliberately inside
+that regime. The non-souping comparison class — **DoReMi** (Xie et al., arXiv:2305.10429) and
+**RegMix** (Liu et al., arXiv:2407.01492) — derives mixture weights from cheap proxy *trainings*;
+we substitute merges for proxy runs, which is precisely the trade DEM/DeMix validate.
+
 ## 7. Limitations
 
 - Behavioral stats are ~500-record samples per config with a regex classifier — treat percentages as
