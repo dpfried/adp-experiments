@@ -63,6 +63,35 @@ def reservoir_from_shards(shards, scratch: Path, target: int, seen_mult: float, 
     return reservoir, seen
 
 
+def _stringify_metadata(path: Path) -> None:
+    """Rewrite the ``metadata`` column of a LLaMA-Factory jsonl as a JSON string.
+
+    The ADP ``sft_to_llamafactory`` adapter emits ``metadata`` as a nested struct
+    whose subkeys depend on the record type (condensation records carry
+    ``condensation_*``; segment records carry ``trajectory_segment_index``; some carry
+    ``source_row_id`` — only a handful of subkeys are universal). HF ``datasets``
+    infers the Arrow schema from the first block, then fails to cast a later block that
+    introduces an unseen struct field, raising ``TypeError: Couldn't cast ...`` /
+    ``DatasetGenerationError`` at pretokenize time. The failure is data-ordering
+    dependent, so it can lurk unnoticed in a single-source file and fire on the merged
+    eval sets. ``metadata`` is provenance only (unused by SFT training), so serializing
+    it to a string gives one uniform schema while staying lossless (recover with
+    ``json.loads``).
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with path.open() as fin, tmp.open("w") as fout:
+        for line in fin:
+            line = line.rstrip("\n")
+            if not line:
+                continue
+            rec = json.loads(line)
+            md = rec.get("metadata")
+            if isinstance(md, (dict, list)):
+                rec["metadata"] = json.dumps(md, ensure_ascii=False, sort_keys=True)
+            fout.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    tmp.replace(path)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--target-raw", type=int, default=80000)
@@ -119,6 +148,10 @@ def main() -> None:
                  "--trim-to-trainable", "--skip-untrainable"],
                 cwd=str(ADP_REPO), check=True,
             )
+            # Normalize `metadata` to a JSON string so HF `datasets` sees one uniform
+            # Arrow schema (see _stringify_metadata) — otherwise pretokenize can fail
+            # with DatasetGenerationError on schema-heterogeneous records.
+            _stringify_metadata(out_jsonl)
         done_marker.write_text("ok\n")
         print(f"[{cfg}] DONE -> {out_dir}", flush=True)
 
