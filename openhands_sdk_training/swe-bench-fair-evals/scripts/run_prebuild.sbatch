@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=swebench-prebuild
 #SBATCH --partition=scavenge
+#SBATCH --requeue
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=12:00:00
@@ -13,7 +14,9 @@
 # builds lazily (lazy builds under N workers OOM the node). CPU-only → scavenge.
 #
 #   sbatch --array=0-7 run_prebuild.sbatch
-# Idempotent (ensure_* reuses existing SIFs); rerun to fill gaps.
+# Idempotent (ensure_* reuses existing SIFs); rerun to fill gaps. --requeue so a
+# scavenge preemption auto-restarts the task (cached SIFs skip). For a one-shot
+# smoke you can instead submit on --partition=learnfair to avoid preemption.
 # ~500/8 ≈ 63 builds/task; SIFs ~1.5GB each → ~750GB total under
 # OPENHANDS_APPTAINER_BUILD_ROOT on /checkpoint. 64G + serialized uv builds
 # (Babel measured ~59GB peak RSS/build).

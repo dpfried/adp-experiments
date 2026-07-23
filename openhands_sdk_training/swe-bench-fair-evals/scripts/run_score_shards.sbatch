@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=swebench-score
 #SBATCH --partition=scavenge
+#SBATCH --requeue
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --time=12:00:00
