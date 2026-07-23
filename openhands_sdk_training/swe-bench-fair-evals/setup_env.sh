@@ -101,6 +101,27 @@ if old not in s:
 f.write_text(s.replace(old, new)); print("patched apptainer_build.py for proot-safe builds")
 PY
 
+# --- 3c. run agent-server containers without --fakeroot ----------------------
+# At *runtime* the workspace does `apptainer run --fakeroot --compat <sif>`,
+# which again needs /etc/subuid (absent) → "could not use fakeroot" and the
+# container dies (exit 255) so every rollout fails. ApptainerWorkspace exposes
+# use_fakeroot (default True); run_infer.py doesn't set it. Force it False — with
+# --compat's writable-tmpfs overlay the agent-server runs fine as the host user.
+python3 - "$BENCHMARKS_DIR/benchmarks/swebench/run_infer.py" <<'PY'
+import sys, pathlib
+f = pathlib.Path(sys.argv[1]); s = f.read_text()
+if "use_fakeroot=False" in s:
+    print("run_infer.py already fakeroot-patched"); raise SystemExit(0)
+old = '                    cache_dir=os.getenv("APPTAINER_CACHEDIR", None),\n                )'
+n = s.count(old)
+if n == 0:
+    print("WARN: fakeroot patch target not found (upstream changed?)"); raise SystemExit(0)
+new = ('                    cache_dir=os.getenv("APPTAINER_CACHEDIR", None),\n'
+       '                    use_fakeroot=False,  # FAIR: no /etc/subuid mapping for dpf\n'
+       '                )')
+f.write_text(s.replace(old, new)); print(f"patched {n} ApptainerWorkspace call(s): use_fakeroot=False")
+PY
+
 # --- 4. build benchmarks/.venv via uv sync (workspace: benchmarks + SDK) -----
 ( cd "$BENCHMARKS_DIR" && "$UV" sync )
 MISSING=0
