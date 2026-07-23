@@ -88,19 +88,34 @@ $SB_VENV/bin/python $SWEBENCH_ROOT/scripts/merge_shard_reports.py smoke10
 
 Green smoke → drop `--select` / build all 500 SIFs for a full run.
 
-## Open items to validate at first run (can't confirm without the checkout / a live run)
+## FAIR bring-up gotchas — all resolved in this kit (2026-07-23)
 
-1. **Shim completeness** — SingularityCE 4.x honors `SINGULARITY_*` env and most
-   `apptainer` CLI verbs, but confirm the OpenHands build code doesn't shell out
-   to `apptainer`-only flags. If it reads a binary path from config, point it at
-   the shim.
-2. **vLLM version** — pin the version that ships the `qwen3_coder` tool parser
-   and the `--mamba-cache-mode align` GDN prefix-caching flag (vLLM ≥0.24), built
-   against the FAIR cu12x driver.
-3. **GHCR rate limits** — anonymous pulls get 429'd from shared cluster IPs
-   (`RESULTS.md`). Prebuild serializes and caches once; if throttled, authenticate
-   to GHCR or stagger the array. Serve **local snapshot paths, never hub ids**.
-4. **uv.lock vs. the SDK fork** — `uv sync` may re-lock because the workspace
-   member (`vendor/software-agent-sdk`) is the fork branch, not the upstream
-   submodule pin the committed `uv.lock` was generated against. Network is
-   available on FAIR compute, so a re-lock is fine; watch for resolution drift.
+These were found and fixed while standing the pipeline up end-to-end on FAIR; the
+fixes live in `env.sh` / `setup_env.sh` and the two source patches setup_env.sh
+applies to the checkout.
+
+1. **Unprivileged SIF builds → `proot`.** SingularityCE is non-setuid and dpf has
+   no `/etc/subuid` mapping, so `apptainer build` of a `%post` def fails
+   `exit 255`. A static `proot` on PATH (installed by setup_env.sh) is auto-used.
+2. **`groupadd`/`useradd` fail under proot.** setup_env.sh patches the agent-def
+   generator (`apptainer_build.py`) to append to `/etc/{group,passwd,shadow}`.
+3. **Runtime containers → `use_fakeroot=False`.** The workspace runs
+   `apptainer run --fakeroot`, which also needs subuid → exit 255. setup_env.sh
+   patches `run_infer.py`'s `ApptainerWorkspace(...)` to pass `use_fakeroot=False`
+   (works via `--compat` writable-tmpfs as the host user).
+4. **vLLM must be CUDA-12.x.** A100 driver is **550.144** (cu12.x; cu13 needs
+   ≥580). PyPI vLLM wheels are cu13-linked and won't load — install the `+cu129`
+   GitHub-release wheel with `--torch-backend=cu129` (`libcudart.so.12`).
+5. **`CUDA_HOME=/public/apps/cuda/12.4`.** vLLM/flashinfer JIT-compile Qwen3.5
+   GDN kernels at serve time and need nvcc; FAIR compute has none. Set in env.sh.
+6. **Node-local scratch is inconsistent** (`/scratch`→`/raid`, mkdir-fails on some
+   nodes) → env.sh probes writable candidates for `APPTAINER_TMPDIR`.
+7. **scavenge preempts** long prebuilds → `--requeue` (idempotent) or run the
+   prebuild on `learnfair`. GHCR pulls can 429 on shared IPs — prebuild once.
+
+## Still to watch at larger scale
+
+- **GHCR 429s** when prebuilding all 500 base images back-to-back; stagger/auth if
+  throttled. Serve **local snapshot paths, never hub ids**.
+- **uv.lock vs. the SDK fork** — `uv sync` may re-lock (workspace member is the
+  fork branch, not the submodule pin); fine with network, watch for drift.
