@@ -36,31 +36,35 @@ but it proves serve → agent-rollout → containerized scoring works on FAIR.
 All paths/knobs live in **`env.sh`** (sourced by every sbatch from
 `$SWEBENCH_ROOT/env.sh`, deployed there by `setup_env.sh`).
 
-## Step 0 — get the code onto FAIR (needs you; Babel is unreachable from here)
+## Step 0 — code source (on GitHub, reachable from FAIR compute)
 
-Transfer decision: **git push → GitHub**. From Babel, push both checkouts to
-repos/forks you control (public OpenHands + your fixes — no FB-internal concern):
+Transfer decision: **git push → GitHub** (done). Both are public forks:
 
-- **benchmarks**, branch `babel-scoring-fixes` (carries PRs #745 / #743 / #751 +
-  the 3 local infra fixes documented in `../swe-bench-babel-evals/RESULTS.md`).
-- **software-agent-sdk** fork (PR #3641 apptainer tokenizer binds).
+- **benchmarks**: `dpfried/benchmarks` @ `babel-scoring-fixes` — a **uv
+  workspace**; carries PRs #745 / #743 / #751 + the 3 local infra fixes
+  (`../swe-bench-babel-evals/RESULTS.md`). Its SDK is a submodule at
+  `vendor/software-agent-sdk` pinned to **upstream**.
+- **software-agent-sdk**: `dpfried/software-agent-sdk` @
+  `fix-apptainer-tokenizer-condenser` — PR #3641 apptainer tokenizer/condenser
+  binds. `setup_env.sh` swaps this fork branch into the workspace member so #3641
+  is present, then `uv sync`.
 
-Then give me the two URLs + refs; I wire them into `setup_env.sh`
-(`BENCHMARKS_GIT/REF`, `AGENT_SDK_GIT/REF`).
+`setup_env.sh` has these URLs/refs as defaults (override via `BENCHMARKS_GIT/REF`,
+`AGENT_SDK_GIT/REF`).
 
 ## Step 1 — build the env (one-time)
 
 ```bash
 # on a scavenge compute node (needs internet + /checkpoint + /scratch)
-BENCHMARKS_GIT=<url> BENCHMARKS_REF=babel-scoring-fixes \
-AGENT_SDK_GIT=<url> AGENT_SDK_REF=<ref> \
-  bash openhands_sdk_training/swe-bench-fair-evals/setup_env.sh
+srun --partition=scavenge --cpus-per-task=8 --mem=48G --time=03:00:00 \
+  bash /checkpoint/dpf/swebench-eval/setup_env.sh
 ```
 
-Creates `$SWEBENCH_ROOT/{.venv,.venv_vllm,benchmarks,software-agent-sdk}`, the
-apptainer shim, deploys `env.sh` + `scripts/`, prefetches the Verified dataset,
-and smoke-tests a `docker://` pull. (The venv-install block is the common case,
-marked `ADJUST` — finalized against the real checkout layout.)
+Clones `dpfried/benchmarks`, replaces the `vendor/software-agent-sdk` submodule
+with the fork branch, runs `uv sync` → `$BENCHMARKS_DIR/.venv` (with
+`swebench-infer`/`-eval`/`validate-cfg`), builds `$SWEBENCH_ROOT/.venv_vllm`,
+installs the apptainer shim, deploys `env.sh` + helper `scripts/`, prefetches the
+Verified dataset, and smoke-tests a `docker://` pull.
 
 ## Step 2 — proof-of-port smoke (a handful of instances first)
 
@@ -95,5 +99,7 @@ Green smoke → drop `--select` / build all 500 SIFs for a full run.
 3. **GHCR rate limits** — anonymous pulls get 429'd from shared cluster IPs
    (`RESULTS.md`). Prebuild serializes and caches once; if throttled, authenticate
    to GHCR or stagger the array. Serve **local snapshot paths, never hub ids**.
-4. **Editable-install layout** — the `ADJUST` block in `setup_env.sh` is finalized
-   once the real `benchmarks` + `software-agent-sdk` tree is on FAIR.
+4. **uv.lock vs. the SDK fork** — `uv sync` may re-lock because the workspace
+   member (`vendor/software-agent-sdk`) is the fork branch, not the upstream
+   submodule pin the committed `uv.lock` was generated against. Network is
+   available on FAIR compute, so a re-lock is fine; watch for resolution drift.

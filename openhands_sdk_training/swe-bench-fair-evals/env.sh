@@ -24,9 +24,11 @@ export SINGULARITY_BIN="${SINGULARITY_BIN:-/public/apps/singularity/4.0.2/bin/si
 export PATH="$SWEBENCH_ROOT/bin:$PATH"
 
 # --- venvs / code -------------------------------------------------------------
-export SB_VENV="$SWEBENCH_ROOT/.venv"            # benchmarks + software-agent-sdk (swebench-infer / swebench-eval / validate-cfg)
-export SB_VENV_VLLM="$SWEBENCH_ROOT/.venv_vllm"  # vLLM OpenAI server (separate: different torch/deps than training env)
+# benchmarks is a uv workspace (SDK is a submodule member at vendor/software-agent-sdk);
+# `uv sync` builds the venv INSIDE the checkout — hence benchmarks/.venv, matching Babel.
 export BENCHMARKS_DIR="$SWEBENCH_ROOT/benchmarks"
+export SB_VENV="$BENCHMARKS_DIR/.venv"           # swebench-infer / swebench-eval / validate-cfg / python
+export SB_VENV_VLLM="$SWEBENCH_ROOT/.venv_vllm"  # vLLM OpenAI server (separate: different torch/deps)
 
 # --- HuggingFace: eval needs princeton-nlp/SWE-bench_Verified, so NOT offline -
 export HF_HOME="${HF_HOME:-$SWEBENCH_ROOT/hf_cache}"
