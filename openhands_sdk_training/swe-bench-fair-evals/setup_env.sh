@@ -86,11 +86,18 @@ done
 # --- 5. .venv_vllm: serving --------------------------------------------------
 # Needs a vLLM new enough to serve Qwen3.5 (GDN hybrid) with the qwen3_coder
 # tool parser; >=0.24 also has the --mamba-cache-mode align prefix-caching flag.
-# PIN cu128: the FAIR driver is 550 (CUDA 12.x); it runs cu128 via minor-version
-# compat but NOT cu13, which recent vLLM pulls by default. --torch-backend=cu128
-# forces the CUDA 12.8 wheel set.
+#
+# CRITICAL — CUDA 12.x only: the FAIR A100 driver is 550.144 (CUDA 12.4-era). It
+# runs any CUDA 12.x build via minor-version compat (like the training env's
+# cu128 torch) but CANNOT run CUDA 13 (needs driver >=580). vLLM's *PyPI* wheels
+# are now cu13-linked (_C -> libcudart.so.13) and will NOT load here. vLLM
+# publishes CUDA-12.x wheels only on GitHub releases, tagged +cu129 (libcudart
+# .so.12, same SONAME as cu128 → compatible). Install that wheel + cu128 torch.
+VLLM_VERSION="${VLLM_VERSION:-0.25.1}"
+VLLM_CUDA="${VLLM_CUDA:-cu129}"
+VLLM_WHL="https://github.com/vllm-project/vllm/releases/download/v${VLLM_VERSION}/vllm-${VLLM_VERSION}+${VLLM_CUDA}-cp38-abi3-manylinux_2_28_x86_64.whl"
 "$UV" venv "$SWEBENCH_ROOT/.venv_vllm" --python 3.12
-"$UV" pip install --python "$SWEBENCH_ROOT/.venv_vllm/bin/python" --torch-backend=cu128 'vllm>=0.24' ninja
+"$UV" pip install --python "$SWEBENCH_ROOT/.venv_vllm/bin/python" --torch-backend=cu128 "vllm @ $VLLM_WHL" ninja
 
 # --- 6. prefetch dataset + smoke apptainer ----------------------------------
 export HF_HOME="$SWEBENCH_ROOT/hf_cache"; unset HF_HUB_OFFLINE
