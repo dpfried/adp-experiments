@@ -6,8 +6,11 @@ original scripts/generate_v2_arm_configs.py:
   * save_only_model: false from step 0 (full optimizer+scheduler state in checkpoints)
   * sbatch resume picker skips partial checkpoints (no trainer_state.json) and HARD-FAILS
     on model-only checkpoints instead of silently resetting the LR schedule
-  * 8 GPUs x bs1 x ga4 = global batch 32 (identical schedule/steps to the 4-GPU x ga8
-    Babel runs), explicit seed
+  * global batch fixed at 32 (nproc x per_device_bs x grad_accum) so step count/LR
+    schedule match the Babel anchors regardless of GPU count; explicit seed
+  * DeepSpeed ZeRO-2 by default (4B params fit replicated on 80GB A100 -> no per-step
+    param all-gather -> faster than the ZeRO-3 the Babel L40S runs needed); --zero-stage
+    and --per-device-bs are flags so the smoke run can measure the throughput tradeoff
   * all cluster-specific values are CLI flags
 
 Usage (see README.md §6):
@@ -53,7 +56,7 @@ overwrite_cache: true
 preprocessing_num_workers: 8
 tokenized_path: {tok_path}
 output_dir: {out_dir}
-per_device_train_batch_size: 1
+per_device_train_batch_size: {per_device_bs}
 """
 
 TRAIN_YAML = """\
@@ -67,7 +70,7 @@ flash_attn: fa2
 stage: sft
 do_train: true
 finetuning_type: full
-deepspeed: {env_root}/LLaMA-Factory/examples/deepspeed/ds_z3_config.json
+deepspeed: {env_root}/LLaMA-Factory/examples/deepspeed/ds_z{zero_stage}_config.json
 
 ### dataset (loads pre-built tokenized cache from phase 1)
 dataset: {ds_train}
@@ -92,7 +95,7 @@ run_name: adp-v2-{arm}-4b-a100{run_suffix}
 
 ### train — DO NOT CHANGE (matched schedule across arms; global batch 32)
 seed: 42
-per_device_train_batch_size: 1
+per_device_train_batch_size: {per_device_bs}
 gradient_accumulation_steps: {grad_accum}
 learning_rate: 1.0e-5
 num_train_epochs: 1
@@ -151,12 +154,17 @@ mkdir -p "$OUT" || {{ echo "FATAL: bulk storage unavailable at $OUT"; exit 1; }}
 echo "== output_dir=$OUT =="
 
 # --- resume picker (LR-integrity hardened) ---
-# newest checkpoint that has trainer_state.json (skips partial mid-save kills);
+# highest-step checkpoint that has trainer_state.json (skips partial mid-save kills);
 # HARD-FAIL if it lacks optimizer state (model-only) — resuming would silently
 # restart warmup+cosine from the resume step, which is the confound this rerun fixes.
-CKPT=""
-for c in $(ls -d "$OUT"/checkpoint-* 2>/dev/null | sort -t- -k2 -n -r); do
-  [ -f "$c/trainer_state.json" ] && CKPT=$c && break
+# Parse the numeric suffix directly (NOT `sort -t- -kN`): any '-' in $OUT — e.g. an
+# `adp-env` path component — breaks field-based sorting and picks the wrong checkpoint.
+CKPT=""; BEST=-1
+for c in "$OUT"/checkpoint-*; do
+  [ -d "$c" ] && [ -f "$c/trainer_state.json" ] || continue
+  n=${{c##*checkpoint-}}
+  case $n in ''|*[!0-9]*) continue;; esac
+  [ "$n" -gt "$BEST" ] && {{ BEST=$n; CKPT=$c; }}
 done
 RESUME_ARG=""
 if [ -n "$CKPT" ]; then
@@ -207,15 +215,26 @@ def main() -> None:
     ap.add_argument("--gres", default="gpu:8", help="e.g. gpu:8 or gpu:a100:8")
     ap.add_argument("--time", default="2-00:00:00")
     ap.add_argument("--gpus-per-node", type=int, default=8)
+    ap.add_argument("--per-device-bs", type=int, default=1,
+                    help="micro-batch/GPU; grad_accum is derived to keep global batch 32. "
+                         "bs>1 trades grad-accum passes for bigger forwards (throughput "
+                         "tradeoff at 32k seqlen is data-dependent — measure in --smoke)")
+    ap.add_argument("--zero-stage", type=int, default=2, choices=(2, 3),
+                    help="DeepSpeed ZeRO stage. 2 (default): params replicated, no per-step "
+                         "all-gather — faster for 4B on 80GB. 3: also shards params (Babel's "
+                         "L40S setting; only needed if memory-bound)")
     ap.add_argument("--wandb-project", default="adp-v2-a100")
     ap.add_argument("--arms", nargs="*", default=list(ARMS), choices=list(ARMS))
     ap.add_argument("--smoke", action="store_true",
                     help="30-step smoke variant (separate _smoke run/output dirs)")
     args = ap.parse_args()
 
-    if 32 % args.gpus_per_node:
-        raise SystemExit("global batch 32 must be divisible by --gpus-per-node")
-    grad_accum = 32 // args.gpus_per_node
+    micro = args.gpus_per_node * args.per_device_bs
+    if 32 % micro:
+        raise SystemExit(
+            f"global batch 32 must be divisible by nproc*per_device_bs "
+            f"({args.gpus_per_node}*{args.per_device_bs}={micro})")
+    grad_accum = 32 // micro
     kit_dir = Path(__file__).resolve().parent
     run_suffix = "-smoke" if args.smoke else ""
     smoke_line = "max_steps: 30\n" if args.smoke else ""
@@ -241,13 +260,15 @@ def main() -> None:
                    data_dir=data_dir, tok_path=tok_path, out_dir=out_dir,
                    ds_train=ds_train, partition=args.partition, gres=args.gres,
                    time=args.time, nproc=args.gpus_per_node, grad_accum=grad_accum,
+                   per_device_bs=args.per_device_bs, zero_stage=args.zero_stage,
                    wandb_project=args.wandb_project, run_suffix=run_suffix,
                    smoke_line=smoke_line, save_steps=save_steps,
                    account_line=f"#SBATCH --account={args.account}\n" if args.account else "")
         (run / "pretok.yaml").write_text(PRETOK_YAML.format(**fmt))
         (run / "train.yaml").write_text(TRAIN_YAML.format(**fmt))
         (run / "submit.sbatch").write_text(SBATCH.format(**fmt))
-        print(f"[{arm}] wrote {run}  (data={data_dir}, out={out_dir}, ga={grad_accum})")
+        print(f"[{arm}] wrote {run}  (data={data_dir}, out={out_dir}, "
+              f"bs={args.per_device_bs} ga={grad_accum} z{args.zero_stage})")
     print("ARMS_GENERATED")
 
 

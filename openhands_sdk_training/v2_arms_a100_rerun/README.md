@@ -28,7 +28,15 @@ depends on them): seq/cutoff 32768, LLaMA-Factory `template: qwen3_5_nothink`, O
 tool-calling format (matches the OpenHands SDK eval harness — do NOT convert to
 sharegpt), 55,000 records/arm (`max_samples` at pretokenize), 1 epoch, **global batch
 32** → 1719 optimizer steps, peak LR 1e-5, cosine to 0, warmup_ratio 0.03, bf16,
-ZeRO-3 + FlashAttention-2 + Liger, gradient checkpointing.
+FlashAttention-2 + Liger, gradient checkpointing.
+
+DeepSpeed ZeRO stage and micro-batch composition are **not** comparability constants —
+they only affect memory/throughput, not the loss trajectory, step count, or LR schedule
+(global batch 32 is what must stay fixed). This kit defaults to **ZeRO-2** (Babel used
+ZeRO-3 because 48 GB L40S needed param sharding; on 80 GB A100 the 4B params fit
+replicated, so ZeRO-2 drops the per-step param all-gather and runs faster). Whatever you
+pick, use the **same stage and micro-batch for all four arms**. `--zero-stage`,
+`--per-device-bs` (grad_accum auto-derived to keep global batch 32).
 
 Babel reference points: untrained base = 25/500 on SWE-bench Verified;
 paper-nonweb 24k run = 52/500; the Babel arm evals were still in flight when this kit
@@ -77,9 +85,12 @@ each assumption:
   (`sinfo`, `sacctmgr show user $USER withassoc`) and pass them to
   `generate_arm_runs.py` (`--partition`, `--account`, `--gres`, `--time`). If it is not
   Slurm, the sbatch bodies are plain bash after the `#SBATCH` header — port the header.
-- **A100 variant**: recipe is sized for 80 GB. On 8-GPU ZeRO-3 + Liger + grad-ckpt a
-  4B/32k run used ~27 GB/GPU on Babel, so 40 GB A100s likely also work — verify with a
-  short smoke run before launching all arms.
+- **A100 variant**: recipe is sized for 80 GB. On 4×L40S ZeRO-3 + Liger + grad-ckpt a
+  4B/32k run used ~27 GB/GPU on Babel; the default here is ZeRO-2 (params replicated,
+  ~+8 GB/GPU for the 4B weights → est. ~30-35 GB/GPU + activations, comfortable on
+  80 GB). On 40 GB A100s prefer `--zero-stage 3` and verify with a smoke run. Also
+  confirm the LLaMA-Factory checkout ships `examples/deepspeed/ds_z2_config.json` (it
+  does at the pinned commit) — the sbatch dies at train start if the path is missing.
 - **Storage**: pick a bulk filesystem for checkpoints (each arm holds ≤ ~140 GB steady
   state with limit 2, plus 8 GB final model) and for datasets (~32 GB total). Do NOT
   put checkpoints on a small home quota — on Babel a full home broke SSH cluster-wide.
@@ -162,7 +173,16 @@ whole point of this rerun.
 `max_steps: 30` override and a `_smoke` suffix) and check: it reaches step 30, loss is
 finite and ~1.x early, sec/step is sane, `nvidia-smi` shows all 8 GPUs busy, and a
 checkpoint written at step 25 contains `trainer_state.json` **and** a `global_step*/`
-dir (= optimizer state present).
+dir (= optimizer state present). Note peak GPU memory (from the sidecar monitor log) —
+ZeRO-2 should sit well under 80 GB.
+
+**Micro-batch tuning (optional, decide from the smoke run).** Global batch is fixed at
+32, but its composition is free. Default is `--per-device-bs 1` (grad_accum 4). At
+32k seqlen a bs=1 micro-batch is already a large token batch, so bs=2 (grad_accum 2)
+may or may not help — it depends on how much padding the un-packed short trajectories
+waste. To decide empirically, smoke both and compare `sec/step` in `trainer_log.jsonl`:
+`--per-device-bs 1` vs `--per-device-bs 2`, keeping memory under 80 GB. Adopt the winner
+for **all four** arms (never mix compositions across arms mid-campaign).
 
 ## 7. Monitoring and integrity checks (per arm)
 

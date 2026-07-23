@@ -15,10 +15,13 @@ acting.** These are the non-negotiable rules; rationale is in the README.
      between consecutive rows = schedule reset). If a schedule reset ever happens,
      restart that arm from scratch; it is not repairable.
 2. **Do not change the recipe** (model, template, cutoff 32768, 55k samples, 1 epoch,
-   peak LR 1e-5 cosine, warmup_ratio 0.03, seed 42, **global batch 32**). If you change
-   GPU count per job, adjust `gradient_accumulation_steps` to keep global batch = 32
-   (nproc × bs1 × ga = 32); otherwise step count and schedule stop matching the
-   campaign anchors.
+   peak LR 1e-5 cosine, warmup_ratio 0.03, seed 42, **global batch 32**). Global batch
+   32 is the anchor: if you change GPU count or `--per-device-bs`, the generator
+   auto-derives `gradient_accumulation_steps` to keep nproc × bs × ga = 32; otherwise
+   step count and schedule stop matching the campaign anchors. DeepSpeed ZeRO stage
+   (`--zero-stage`, default 2) and micro-batch composition (`--per-device-bs`) are
+   throughput/memory knobs, **not** recipe constants — they don't change the loss
+   trajectory or schedule — but they MUST be identical across all four arms (see rule 6).
 3. **Checkpoints go to bulk storage only** — never to a quota-limited home filesystem.
    Verify free space (need ~150 GB per arm headroom) before every launch.
 4. Keep the training data in **OpenAI tool-calling format** (as built) — do not
