@@ -45,8 +45,15 @@ export OH_SANDBOX_ROOT="$SWEBENCH_ROOT/oh/swebench-sandboxes"
 # but be explicit so neither path guesses.)
 export APPTAINER_CACHEDIR="$SWEBENCH_ROOT/oh/apptainer-cache"
 export SINGULARITY_CACHEDIR="$APPTAINER_CACHEDIR"
-# Build tmp on node-local /scratch (fast, disposable), per-job to avoid clashes.
-export APPTAINER_TMPDIR="/scratch/${USER}/apptainer-tmp-${SLURM_JOB_ID:-$$}"
+# Build tmp on node-local scratch (fast, disposable), per-job. /scratch is a
+# per-node symlink (→/raid) that is creatable on some nodes but NOT others
+# (mkdir /scratch/$USER → EACCES), so probe candidates and fall back to /tmp,
+# then to /checkpoint (NFS, always writable) as a last resort.
+_sb_tmpbase=""
+for _c in "/scratch/${USER}" "/raid/${USER}" "${TMPDIR:-/tmp}/${USER}" "$SWEBENCH_ROOT/tmp"; do
+  if mkdir -p "$_c" 2>/dev/null; then _sb_tmpbase="$_c"; break; fi
+done
+export APPTAINER_TMPDIR="${_sb_tmpbase:-/tmp}/apptainer-tmp-${SLURM_JOB_ID:-$$}"
 export SINGULARITY_TMPDIR="$APPTAINER_TMPDIR"
 # Serialize uv inside image builds — Babel measured ~59GB peak RSS/build
 # unserialized; serialized fits comfortably in a 64G job.
