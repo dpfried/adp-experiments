@@ -120,10 +120,13 @@ done
 # publishes CUDA-12.x wheels only on GitHub releases, tagged +cu129 (libcudart
 # .so.12, same SONAME as cu128 → compatible). Install that wheel + cu128 torch.
 VLLM_VERSION="${VLLM_VERSION:-0.25.1}"
-VLLM_CUDA="${VLLM_CUDA:-cu129}"
+VLLM_CUDA="${VLLM_CUDA:-cu129}"   # torch backend + wheel must match (torchcodec dep pins them together)
 VLLM_WHL="https://github.com/vllm-project/vllm/releases/download/v${VLLM_VERSION}/vllm-${VLLM_VERSION}+${VLLM_CUDA}-cp38-abi3-manylinux_2_28_x86_64.whl"
 "$UV" venv "$SWEBENCH_ROOT/.venv_vllm" --python 3.12
-"$UV" pip install --python "$SWEBENCH_ROOT/.venv_vllm/bin/python" --torch-backend=cu128 "vllm @ $VLLM_WHL" ninja
+# cu129 is CUDA 12.9 → libcudart.so.12, runs on driver 550 via 12.x minor-compat
+# (like the training env's cu128). Match torch-backend to the wheel's cuda tag,
+# else torchcodec (a vLLM dep) is unsatisfiable.
+"$UV" pip install --python "$SWEBENCH_ROOT/.venv_vllm/bin/python" --torch-backend="$VLLM_CUDA" "vllm @ $VLLM_WHL" ninja
 
 # --- 6. prefetch dataset + smoke apptainer ----------------------------------
 export HF_HOME="$SWEBENCH_ROOT/hf_cache"; unset HF_HUB_OFFLINE
