@@ -22,7 +22,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-os.environ.setdefault("HF_TOKEN", Path("~/.cache/huggingface/token").expanduser().read_text().strip())
+# Seed HF_TOKEN from the CLI cache file if present; adp-v2 is public, so a missing
+# token file is fine (don't crash at import when the cache dir is empty).
+_hf_tok = Path("~/.cache/huggingface/token").expanduser()
+if "HF_TOKEN" not in os.environ and _hf_tok.exists():
+    _tok = _hf_tok.read_text().strip()
+    if _tok:
+        os.environ["HF_TOKEN"] = _tok
 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 
 from huggingface_hub import HfApi, hf_hub_download  # noqa: E402
@@ -34,8 +40,10 @@ CONFIGS = [
     "nebius_SWE-rebench-openhands-trajectories",
     "nvidia_SWE-Zero-openhands-trajectories",
 ]
-ADP_REPO = Path("~/exp/adp-smoke/agent-data-protocol").expanduser()
-PYTHON = Path("~/exp/adp-smoke/.venv/bin/python").expanduser()
+# Location of the agent-data-protocol checkout (for the sft_to_llamafactory adapter) and
+# the python that runs it. Override per-cluster via env vars rather than editing this file.
+ADP_REPO = Path(os.environ.get("ADP_REPO", "~/exp/adp-smoke/agent-data-protocol")).expanduser()
+PYTHON = Path(os.environ.get("ADP_PYTHON", "~/exp/adp-smoke/.venv/bin/python")).expanduser()
 
 
 def reservoir_from_shards(shards, scratch: Path, target: int, seen_mult: float, max_shards: int, rng):
