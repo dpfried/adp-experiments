@@ -14,6 +14,10 @@ acting.** These are the non-negotiable rules; rationale is in the README.
    - After every resume, verify LR continuity in `trainer_log.jsonl` (a >2× jump/drop
      between consecutive rows = schedule reset). If a schedule reset ever happens,
      restart that arm from scratch; it is not repairable.
+   - Note: `patch_llamafactory_liger_eval_skip_logits.py` (applied for eval, see
+     gotchas) also lets DeepSpeed resume tolerate model-only checkpoints. The sbatch
+     resume picker hard-fails first, so the guard holds — but never hand-resume via
+     that relaxed path; it silently restarts the LR schedule.
 2. **Do not change the recipe** (model, template, cutoff 32768, 55k samples, 1 epoch,
    peak LR 1e-5 cosine, warmup_ratio 0.03, seed 42, **global batch 32**). If you change
    GPU count per job, adjust `gradient_accumulation_steps` to keep global batch = 32
@@ -37,6 +41,20 @@ acting.** These are the non-negotiable rules; rationale is in the README.
 - transformers 5.6.0 FA2 needs `patch_transformers_fa2_s_aux.py` after every
   transformers (re)install, or training crashes with
   `'NoneType' object has no attribute 'to'`.
+- **In-training eval at 32k OOMs without `patch_llamafactory_liger_eval_skip_logits.py`**
+  (the sbatch applies it, fail-fast). Liger avoids materializing logits during
+  training, but HF Trainer's eval path computes the full 32k × ~248k-vocab logits
+  tensor and OOMs even on 80 GB. The patch passes `skip_logits=True` on loss-only
+  prediction steps; it requires `prediction_loss_only: true` and
+  `per_device_eval_batch_size: 1` in train.yaml — never remove either. Signature of a
+  missing patch: healthy training, CUDA OOM exactly at the first eval step. Re-apply
+  after any LLaMA-Factory/transformers reinstall. Details: README §6a.
+- The tokenized cache for these runs is `tokenized_..._ev_<eval-set-names>` (built by
+  phase 1 with the eval splits baked in). Do not point `tokenized_path` at a
+  Babel-transferred train-only cache — eval would silently not run. Eval sets are
+  chosen at generate time via `--eval-set NAME=FILE` (README §6a); pick them BEFORE
+  launching, use the same sets and names for all four arms, and never change them
+  mid-campaign.
 - Tokenization must happen in the single-rank pretokenize phase (phase 1 of the
   sbatch). Multi-rank tokenization deadlocks. `TOKENIZERS_PARALLELISM=false` always.
 - torch wheel CUDA flavor must match the driver (`nvidia-smi` top line). cu128 build

@@ -123,9 +123,12 @@ Training data = deterministic 80k-record reservoir sample (seed 0) per config fr
 four finished subset dirs are at
 `/data/tir/projects/tir1/users/dfried/adp-smoke/datasets/v2_swe_subsets/<config>/`
 (~8 GB each; tir1 is mounted on compute nodes only). Minimum needed per config:
-`train.llamafactory.jsonl`, `eval.llamafactory.jsonl`, `dataset_info.json`. The
-`tokenized_qwen35_4b_inst_seq32768/` Arrow caches can come too (skips pretokenize) or
-be rebuilt in ~1 h.
+`train.llamafactory.jsonl`, `eval.llamafactory.jsonl`, `dataset_info.json`. Do NOT
+bother transferring the `tokenized_qwen35_4b_inst_seq32768/` Arrow caches: they were
+built train-only (the Babel arms ran without in-training eval), and this kit's configs
+deliberately point at a different, eval-set-derived cache path (`..._ev_<names>`, §6a)
+so phase 1 rebuilds the cache once (~1 h) with the eval splits included. The generator
+also merges the eval-set entries into a transferred `dataset_info.json` automatically.
 
 ```bash
 rsync -avP dfried@<babel-compute-path>:/data/tir/.../v2_swe_subsets/ $DATA_ROOT/v2_swe_subsets/
@@ -160,9 +163,88 @@ whole point of this rerun.
 
 **Smoke first**: before the 4 real launches, run one arm with `--smoke` (adds
 `max_steps: 30` override and a `_smoke` suffix) and check: it reaches step 30, loss is
-finite and ~1.x early, sec/step is sane, `nvidia-smi` shows all 8 GPUs busy, and a
+finite and ~1.x early, sec/step is sane, `nvidia-smi` shows all 8 GPUs busy, a
 checkpoint written at step 25 contains `trainer_state.json` **and** a `global_step*/`
-dir (= optimizer state present).
+dir (= optimizer state present), and **an `eval_<name>_loss` is logged at step 25 for
+every configured eval set without an OOM** (the smoke sets `eval_steps: 25` precisely
+so the 32k eval path is exercised before the real launches — see §6a). Run the smoke
+with the same `--eval-set` flags as the real launches, or it validates the wrong
+config.
+
+## 6a. In-training eval and the 32k validation OOM (read before touching eval config)
+
+Unlike the original Babel v2 arms (eval disabled), these runs log validation loss
+every 50 steps. This OOM'd on Babel until fixed, so the moving parts are documented
+here.
+
+**Choosing eval sets** — `generate_arm_runs.py --eval-set NAME=FILE` (repeatable):
+
+- Default (no flag) = `arm_eval=eval.llamafactory.jsonl`, each arm's own 200-record
+  carve-out under the uniform name `arm_eval`.
+- A relative FILE resolves against each arm's data dir (per-arm sets); an absolute
+  FILE is one shared file used by all arms (no copying needed — LLaMA-Factory accepts
+  absolute `file_name` in dataset_info). The generator registers every set in each
+  arm's `dataset_info.json` and validates the files exist.
+- To run two eval sets, e.g. the per-arm carve-out plus a shared held-out set:
+
+  ```bash
+  python generate_arm_runs.py ... \
+    --eval-set arm_eval=eval.llamafactory.jsonl \
+    --eval-set common_val=/abs/path/to/common_val.llamafactory.jsonl
+  ```
+
+  The shared file must be in the same LLaMA-Factory OpenAI format as the carve-outs
+  (`messages` + `tools` columns).
+- `eval_on_each_dataset: true` is always set, so **each set logs its own metric**:
+  `eval_arm_eval_loss`, `eval_common_val_loss`, … in `trainer_log.jsonl` and wandb.
+  NAME is the metric key — keep names uniform across arms so curves are comparable.
+- Eval sets are **baked into the tokenized cache at pretokenize time**; the cache path
+  encodes the selection (`tokenized_..._ev_<name1>-<name2>`). Changing `--eval-set`
+  therefore triggers a one-time ~1 h cache rebuild per arm — this is intentional
+  (silently reusing a cache with the wrong validation splits is the failure it
+  prevents). Corollary: **pick the eval sets before launching and keep them identical
+  across all four arms and for the whole campaign** (rule 6); changing them mid-run
+  changes tokenized_path and the run would refuse to make sense of itself.
+- Cost scales linearly: ~1–2 min per 200-record set per eval point, so two sets ≈
+  2–4 min every 50 steps (~35 eval points over 1719 steps ≈ 1–2 h total). If a second
+  set is much larger than 200 records, trim it or widen `eval_steps` — with the
+  matched-schedule constraint, keep any such change identical across arms.
+
+**The 32k OOM and its fix:**
+
+- **Why it OOMs by default**: training with `enable_liger_kernel: true` never
+  materializes the logits tensor — Liger's fused linear-cross-entropy computes the
+  loss straight from the hidden states. But Hugging Face Trainer's eval/prediction
+  path runs the model's plain forward, which computes the **full logits tensor
+  (32768 seq × ~248k vocab) before the loss** — tens of GB for a single sequence, an
+  OOM at 32k context even on 80 GB cards and even when training runs comfortably.
+- **The fix**: `patch_llamafactory_liger_eval_skip_logits.py` (in this kit) patches
+  the installed LLaMA-Factory so its SFT trainer passes `skip_logits=True` to
+  `model.forward` on **loss-only** prediction steps, keeping the Liger no-logits path
+  during eval. The generated sbatch applies it in the preamble on every job
+  (idempotent, marker-guarded, fail-fast; the script's MCA/Megatron sub-patches
+  auto-skip since those packages aren't installed). **Re-run it after any
+  LLaMA-Factory or transformers reinstall**, like the s_aux patch.
+- **Required YAML pairings** (already in the generated train.yaml — do not remove):
+  `prediction_loss_only: true` (skip_logits returns no logits, so anything needing
+  them — metrics, `predict_with_generate` — would crash) and
+  `per_device_eval_batch_size: 1`.
+- **Cost**: validated on Babel (paper-nonweb 4B run): ~1–2 min per eval on 4 GPUs for
+  a 290-example split; ≈35 evals over 1719 steps ≈ well under an hour total. The
+  eval_loss curve there was monotonic 0.349 → 0.281, i.e. the numbers are sane.
+- **Failure signature if the patch is missing**: CUDA OOM at the *first eval step*
+  (step 50, or 25 in smoke) with training steps before it perfectly healthy, stack
+  through `prediction_step`/`forward`. Fix = re-apply the patch, not shrinking batch
+  sizes.
+- **One side effect to be aware of**: the same patch script also relaxes
+  transformers' DeepSpeed resume to tolerate HF model-only checkpoints. This does
+  **not** weaken hard rule 1 (LR integrity): the sbatch resume picker hard-fails on
+  model-only checkpoints *before* llamafactory-cli ever runs. Do not rely on the
+  relaxed path to resume — it starts a fresh LR schedule, the exact confound this
+  rerun eliminates.
+- Rule 6 still applies: eval settings are part of "same configs" — all four arms run
+  with eval on, same `eval_steps`. If eval somehow has to be disabled (e.g. an
+  unfixable cluster issue), disable it for **all** arms and note it; never mid-run.
 
 ## 7. Monitoring and integrity checks (per arm)
 
@@ -178,6 +260,12 @@ dir (= optimizer state present).
   a `quarantine/` sibling dir to keep the output clean.
 - Watch the first ~50 steps of each arm for loss ~0.9→0.4 trajectory (Babel arms all
   did this); wildly different means a data/template problem, stop early.
+- One `eval_<name>_loss` per configured eval set should appear in
+  `trainer_log.jsonl`/wandb every 50 steps and decrease roughly monotonically.
+  Missing eval rows, or fewer metrics than eval sets = eval silently not running
+  (check that the tokenized cache path ends in the expected `_ev_<names>` suffix and
+  that the liger patch line in the sbatch log printed "Patched"/"Already patched").
+  OOM at an eval step = patch not applied (§6a).
 
 ## 8. Version manifest (validated on Babel, 2026-07)
 
