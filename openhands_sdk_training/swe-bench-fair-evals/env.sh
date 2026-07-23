@@ -30,6 +30,15 @@ export BENCHMARKS_DIR="$SWEBENCH_ROOT/benchmarks"
 export SB_VENV="$BENCHMARKS_DIR/.venv"           # swebench-infer / swebench-eval / validate-cfg / python
 export SB_VENV_VLLM="$SWEBENCH_ROOT/.venv_vllm"  # vLLM OpenAI server (separate: different torch/deps)
 
+# --- CUDA toolkit for JIT kernel compilation ---------------------------------
+# vLLM/flashinfer JIT-compile GDN/mamba kernels for Qwen3.5 at serve time and
+# need nvcc; FAIR compute nodes have no system nvcc (default cuda_home
+# /usr/local/cuda is absent → "Could not find nvcc" and the engine dies). Point
+# at the highest shared toolkit (12.4); nvcc 12.4 compiles fine against the
+# cu129 runtime (12.x minor-compat, harmless version-mismatch warning).
+export CUDA_HOME="${CUDA_HOME:-/public/apps/cuda/12.4}"
+export PATH="$CUDA_HOME/bin:$PATH"
+
 # --- HuggingFace: eval needs princeton-nlp/SWE-bench_Verified, so NOT offline -
 export HF_HOME="${HF_HOME:-$SWEBENCH_ROOT/hf_cache}"
 unset HF_HUB_OFFLINE
