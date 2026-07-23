@@ -76,8 +76,11 @@ done
 # --- 5. .venv_vllm: serving --------------------------------------------------
 # Needs a vLLM new enough to serve Qwen3.5 (GDN hybrid) with the qwen3_coder
 # tool parser; >=0.24 also has the --mamba-cache-mode align prefix-caching flag.
+# PIN cu128: the FAIR driver is 550 (CUDA 12.x); it runs cu128 via minor-version
+# compat but NOT cu13, which recent vLLM pulls by default. --torch-backend=cu128
+# forces the CUDA 12.8 wheel set.
 "$UV" venv "$SWEBENCH_ROOT/.venv_vllm" --python 3.12
-"$UV" pip install --python "$SWEBENCH_ROOT/.venv_vllm/bin/python" 'vllm>=0.24' ninja
+"$UV" pip install --python "$SWEBENCH_ROOT/.venv_vllm/bin/python" --torch-backend=cu128 'vllm>=0.24' ninja
 
 # --- 6. prefetch dataset + smoke apptainer ----------------------------------
 export HF_HOME="$SWEBENCH_ROOT/hf_cache"; unset HF_HUB_OFFLINE
