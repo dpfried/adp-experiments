@@ -28,6 +28,7 @@ but it proves serve → agent-rollout → containerized scoring works on FAIR.
 | Concern | Babel | FAIR (this kit) |
 |---|---|---|
 | Container runtime | `apptainer` binary | SingularityCE 4.0.2 via a `bin/apptainer` symlink shim on PATH; cache/tmp set under **both** `APPTAINER_*` and `SINGULARITY_*` |
+| Unprivileged image build | setuid apptainer / configured fakeroot | non-setuid SingularityCE + no `/etc/subuid` mapping → `%post` builds need **`proot`** on PATH (static binary in `bin/`; auto-used). Without it every SIF prebuild fails `exit 255`. |
 | GPU inference | `general`, 2×L40S, TP2 | `learnfair` + `--constraint=ampere80gb`, 1×A100, TP1 (env `TP=2` for bigger) |
 | CPU prebuild/scoring | `preempt` + dummy `gpu:1` | `scavenge`, no GPU |
 | Bulk storage | `/data/tir/.../dfried` | `/checkpoint/dpf/swebench-eval` (`$SWEBENCH_ROOT`), tmp on node-local `/scratch` |

@@ -43,10 +43,20 @@ else
   echo "kit already in place at $SWEBENCH_ROOT (skip deploy)"
 fi
 
-# --- 2. singularity -> apptainer shim ---------------------------------------
+# --- 2. singularity -> apptainer shim + proot -------------------------------
 ln -sf "$SINGULARITY_BIN" "$SWEBENCH_ROOT/bin/apptainer"
 "$SWEBENCH_ROOT/bin/apptainer" --version
 echo "apptainer shim -> $SINGULARITY_BIN"
+# FAIR's SingularityCE is a non-setuid user install and dpf has no /etc/subuid
+# mapping, so `apptainer build` of a %post def (apt/uv install) fails for a
+# normal user unless `proot` is on PATH — SingularityCE auto-uses it for
+# unprivileged builds. Drop a static proot into the shim dir (already on PATH
+# via env.sh). Without this every agent-SIF prebuild fails with exit 255.
+if [ ! -x "$SWEBENCH_ROOT/bin/proot" ]; then
+  curl -fsSL -o "$SWEBENCH_ROOT/bin/proot" https://proot.gitlab.io/proot/bin/proot
+  chmod +x "$SWEBENCH_ROOT/bin/proot"
+fi
+"$SWEBENCH_ROOT/bin/proot" --version >/dev/null 2>&1 && echo "proot installed" || echo "WARN: proot not runnable"
 
 # --- 3. clone benchmarks + populate the SDK workspace member -----------------
 git_checkout() { # url ref dest
