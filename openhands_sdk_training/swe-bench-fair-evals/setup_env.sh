@@ -34,9 +34,14 @@ echo "== SWEBENCH_ROOT=$SWEBENCH_ROOT  uv=$UV =="
 mkdir -p "$SWEBENCH_ROOT"/{bin,logs,runs,select,hf_cache,oh,scripts}
 
 # --- 1. deploy env.sh + helper scripts into $SWEBENCH_ROOT -------------------
-cp "$KIT_DIR/env.sh" "$SWEBENCH_ROOT/env.sh"
-cp "$KIT_DIR"/scripts/*.py "$SWEBENCH_ROOT/scripts/"
-echo "deployed env.sh + scripts to $SWEBENCH_ROOT"
+# (no-op when the kit was already extracted in-place at $SWEBENCH_ROOT)
+if [ "$KIT_DIR" != "$SWEBENCH_ROOT" ]; then
+  cp "$KIT_DIR/env.sh" "$SWEBENCH_ROOT/env.sh"
+  cp "$KIT_DIR"/scripts/*.py "$SWEBENCH_ROOT/scripts/"
+  echo "deployed env.sh + scripts to $SWEBENCH_ROOT"
+else
+  echo "kit already in place at $SWEBENCH_ROOT (skip deploy)"
+fi
 
 # --- 2. singularity -> apptainer shim ---------------------------------------
 ln -sf "$SINGULARITY_BIN" "$SWEBENCH_ROOT/bin/apptainer"
