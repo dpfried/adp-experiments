@@ -75,6 +75,32 @@ SDK_DIR="$BENCHMARKS_DIR/vendor/software-agent-sdk"
 git_checkout "$AGENT_SDK_GIT" "$AGENT_SDK_REF" "$SDK_DIR"
 echo "== benchmarks @ $(git -C "$BENCHMARKS_DIR" rev-parse --short HEAD)  sdk @ $(git -C "$SDK_DIR" rev-parse --short HEAD) =="
 
+# --- 3b. proot-safe agent-SIF builds ----------------------------------------
+# The generated agent-server def creates an `openhands` user with groupadd/
+# useradd, then `su openhands -c 'uv sync'`. Under proot (our only unprivileged
+# build path, see step 2) groupadd/useradd fail on locked /etc writes → build
+# aborts exit 255. Replace them with direct /etc/{group,passwd,shadow} appends,
+# which proot handles fine (su + uv sync then succeed). Idempotent.
+python3 - "$BENCHMARKS_DIR/benchmarks/swebench/apptainer_build.py" <<'PY'
+import sys, pathlib
+f = pathlib.Path(sys.argv[1]); s = f.read_text()
+if "proot-safe user creation" in s:
+    print("apptainer_build.py already proot-patched"); raise SystemExit(0)
+old = ('''    grep -Eq "^[^:]*:[^:]*:${{GID}}:" /etc/group || groupadd -g "${{GID}}" "${{USERNAME}}"\n'''
+       '''    grep -Eq "^${{USERNAME}}:" /etc/passwd || useradd -m -u "${{UID}}" -g "${{GID}}" -s /bin/bash "${{USERNAME}}"''')
+new = ('''    # proot-safe user creation (FAIR unprivileged apptainer build via proot;\n'''
+       '''    # groupadd/useradd fail on locked /etc writes under proot)\n'''
+       '''    grep -Eq "^[^:]*:[^:]*:${{GID}}:" /etc/group || echo "${{USERNAME}}:x:${{GID}}:" >> /etc/group\n'''
+       '''    if ! grep -Eq "^${{USERNAME}}:" /etc/passwd; then\n'''
+       '''        echo "${{USERNAME}}:x:${{UID}}:${{GID}}::/home/${{USERNAME}}:/bin/bash" >> /etc/passwd\n'''
+       '''        echo "${{USERNAME}}:!::0:99999:7:::" >> /etc/shadow 2>/dev/null || true\n'''
+       '''        mkdir -p /home/${{USERNAME}} && chown "${{UID}}:${{GID}}" /home/${{USERNAME}}\n'''
+       '''    fi''')
+if old not in s:
+    print("WARN: proot patch target not found (upstream changed?) — build may fail under proot"); raise SystemExit(0)
+f.write_text(s.replace(old, new)); print("patched apptainer_build.py for proot-safe builds")
+PY
+
 # --- 4. build benchmarks/.venv via uv sync (workspace: benchmarks + SDK) -----
 ( cd "$BENCHMARKS_DIR" && "$UV" sync )
 MISSING=0
