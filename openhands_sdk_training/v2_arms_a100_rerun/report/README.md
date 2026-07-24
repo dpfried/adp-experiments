@@ -167,9 +167,9 @@ to SWE-Gym, but almost all of the gain lands in the first ~50 steps and then pla
 From the shared untrained baseline (0.573), every arm drops to 0.415–0.459 — a −0.11 to
 −0.16 improvement — but by the first eval point (step 50) each is already at ~0.44–0.47,
 so the curves *look* flat only because the plots begin after the fast early drop.
-(An earlier draft of this report, written before the anchor existed, wrongly called the
-non-scale arms "essentially no transfer" — that was exactly the step-0 artifact the
-anchor corrects.)
+(Reading the step-50-onward curves without the anchor invites calling the non-scale arms
+"essentially no transfer" — a step-0 artifact the anchor corrects, and the reason the
+anchor was worth measuring.)
 
 Beyond step 50 the arms separate: **scale** keeps improving (0.439 → 0.415), while
 coderforge/swezero plateau (~0.45) and rebench sits highest (~0.46), all with a small
