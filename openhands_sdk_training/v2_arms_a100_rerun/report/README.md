@@ -142,12 +142,14 @@ unverified distillation here; the SWE-bench resolution numbers (§8) are the rea
 ## 8. SWE-bench Verified results — *placeholder*
 
 > Downstream eval (500-instance SWE-bench Verified via the OpenHands SDK harness) is
-> pending / to be run on the four `checkpoint-1719` models. Reference anchors from the
-> Babel campaign: untrained base **25/500**; paper-nonweb 24k SFT **52/500**.
+> pending / to be run on the four `checkpoint-1719` models. The correct untrained
+> baseline is the **instruct** `Qwen/Qwen3.5-4B` (same starting point as the arms) —
+> to be measured. Legacy Babel anchors, for context only, were on *different* models:
+> untrained **base** `Qwen3.5-4B-Base` **25/500**; paper-nonweb 24k SFT (base) **52/500**.
 
 | model | resolved / 500 | % resolved | non-empty patch % | notes |
 |---|---:|---:|---:|---|
-| Qwen3.5-4B base (untrained) | _TBD_ | _TBD_ | _TBD_ | reference: 25/500 on Babel |
+| Qwen/Qwen3.5-4B (instruct, untrained) | _TBD_ | _TBD_ | _TBD_ | **the baseline** — same starting model as the arms |
 | coderforge (verified) | _TBD_ | _TBD_ | _TBD_ | |
 | scale (verified) | _TBD_ | _TBD_ | _TBD_ | |
 | rebench (verified) | _TBD_ | _TBD_ | _TBD_ | |
