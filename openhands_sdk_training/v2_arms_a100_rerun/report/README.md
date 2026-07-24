@@ -52,13 +52,33 @@ OpenHands SDK format:
 - **Context length:** trajectories tokenized at **`cutoff_len: 32768`**, template
   **`qwen3_5_nothink`**.
 - **Eval carve-outs (logged every 50 steps as `eval_<name>_loss`):**
-  - **`v2_id_mix`** (**400 records**) — an *in-distribution* validation mixture
-    (held-out trajectories pooled across the adp-v2 SWE families the arms train on).
-  - **`v2_swegym_ood`** (**200 records**) — an *out-of-distribution* held-out set
-    (SWE-Gym), not part of any arm's training source, used as a generalization probe.
+  - **`v2_id_mix`** (**400 records**) — an *in-distribution* validation mixture: the
+    four training families' held-out carve-outs pooled (100 records each), tagged by
+    `source_dataset`. Its teachers therefore **match training** (Qwen3-Coder-480B ×3 +
+    DeepSeek v3.2), so it is in-distribution in both *task source* and *teacher*.
+  - **`v2_swegym_ood`** (**200 records**) — an *out-of-distribution* held-out set, a
+    carve-out of the adp-v2 config `swe-gym_openhands_sampled_trajectories` (~12K v2
+    records total), tokenized the same way (OpenHands SDK / OpenAI tool format, 32k).
+    It is out-of-distribution in **two** ways: a task source not in any arm's training
+    data, **and a different teacher**.
 
-  Eval sets are baked into the tokenized cache at pre-tokenize time and are **identical
-  across all four arms**, so the curves are directly comparable.
+  **Eval-set provenance** (mirrors the §2 training table):
+
+  | eval set | adp-v2 source | carve-out | teacher | scaffold | verified? | license |
+  |---|---|---:|---|---|:--:|---|
+  | `v2_id_mix` | pooled coderforge/scale/rebench/swezero | 400 (100×4) | Qwen3-Coder-480B (×3) + DeepSeek v3.2 | OpenHands | mixed (see §2) | per-source |
+  | `v2_swegym_ood` | `swe-gym_openhands_sampled_trajectories` | 200 | **GPT-4o / Claude-3.5** | OpenHands | ⚠️ ambiguous (possibly unfiltered verifier set) | MIT |
+
+  > **Teacher mismatch (matters for §7).** No training arm shares the SWE-Gym eval
+  > teacher: the arms are distilled from Qwen3-Coder-480B / DeepSeek v3.2, while the
+  > SWE-Gym trajectories are GPT-4o / Claude-3.5. So the OOD curve measures token-CE
+  > against a teacher the model was never trained to imitate — it carries a
+  > **teacher-mismatch floor** independent of SWE task capability, and inter-arm OOD
+  > differences may partly reflect stylistic proximity to the GPT-4o/Claude teacher
+  > rather than better task transfer.
+
+  All eval sets are baked into the tokenized cache at pre-tokenize time and are
+  **identical across all four arms**, so the curves are directly comparable.
 
 ## 4. Training recipe (identical across all four arms)
 
@@ -185,13 +205,20 @@ continued decline vs. the other three plateauing.
 Beyond step 50 the arms separate: **scale** keeps improving (0.439 → 0.415), while
 coderforge/swezero plateau (~0.45) and rebench sits highest (~0.46), all with a small
 early hump (~steps 250–350). Because every arm shares the *identical* untrained init,
-scale's lower OOD is **earned during training, not a starting-point artifact** — its
-data genuinely teaches more SWE-Gym-transferable behavior. (Standard single-seed caveat
-still applies to the small gaps between the other three.)
+scale's lower OOD is **earned during training, not a starting-point artifact**. But
+*what* it earned is ambiguous: recall (§3) that the SWE-Gym eval was distilled by a
+**different teacher** (GPT-4o / Claude-3.5) than any training arm. scale is the only arm
+distilled from DeepSeek v3.2 rather than Qwen3-Coder-480B, so its lower OOD token-CE may
+reflect **DeepSeek's stylistic proximity to the GPT-4o/Claude eval teacher** as much as
+genuinely more transferable SWE behavior — the two are confounded here and this loss
+cannot separate them. (Standard single-seed caveat also applies to the small gaps among
+the other three.) This is a strong reason to treat OOD *loss* as a sanity signal only
+and lean on the SWE-bench resolution numbers (§8).
 
 So lowest ID loss (rebench/coderforge) does **not** predict best OOD loss (scale) — a
-caution against reading the ID curve as a generalization proxy — but the shared step-0
-anchor now lets us attribute scale's OOD edge to its data rather than to initialization.
+caution against reading the ID curve as a generalization proxy — and the shared step-0
+anchor lets us attribute scale's OOD edge to its *data* rather than to initialization,
+even if data-quality vs. teacher-style remains confounded (above).
 
 The **coderforge (verified source) vs swezero (unverified source)** comparison is tiny
 in loss terms: coderforge is lower (better) on ID by 0.012 (0.314 vs 0.326), and the
