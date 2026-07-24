@@ -52,10 +52,10 @@ OpenHands SDK format:
 - **Context length:** trajectories tokenized at **`cutoff_len: 32768`**, template
   **`qwen3_5_nothink`**.
 - **Eval carve-outs (logged every 50 steps as `eval_<name>_loss`):**
-  - **`v2_id_mix`** — an *in-distribution* validation mixture (held-out trajectories
-    drawn from the same adp-v2 SWE families the arms train on).
-  - **`v2_swegym_ood`** — an *out-of-distribution* held-out set (SWE-Gym), not part of
-    any arm's training source, used as a generalization probe.
+  - **`v2_id_mix`** (**400 records**) — an *in-distribution* validation mixture
+    (held-out trajectories pooled across the adp-v2 SWE families the arms train on).
+  - **`v2_swegym_ood`** (**200 records**) — an *out-of-distribution* held-out set
+    (SWE-Gym), not part of any arm's training source, used as a generalization probe.
 
   Eval sets are baked into the tokenized cache at pre-tokenize time and are **identical
   across all four arms**, so the curves are directly comparable.
@@ -98,6 +98,24 @@ OpenHands SDK format:
 
   Campaign wall-clock ≈ **14.6 h** (arms run concurrently); aggregate ≈ **56 GPU-node-hours**
   ≈ **~448 A100-GPU-hours** (4 arms × ~14 h × 8 GPUs).
+
+### Token counts & truncation at `cutoff_len` 32768
+
+Arms are matched on **records** (55,000 each) but not on tokens — a ~6.6% spread, which
+partly explains the wall-clock differences. Crucially, **truncation at 32k is
+negligible** in every arm (≤0.03% of records), so the concern that the 32k cap clips
+the trajectory's patch/submit turn does **not** materially apply here — median
+trajectory is ~15k tokens and p95 ~26k, well inside the window.
+
+| arm | records | total tokens | mean len | median | p95 | max | records truncated (≥32768) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| coderforge | 55,000 | 838.3 M | 15,242 | 17,208 | 26,763 | 32,768 | 18 (0.03%) |
+| swezero | 55,000 | 852.5 M | 15,500 | 17,296 | 26,328 | 32,768 | 4 (0.01%) |
+| rebench | 55,000 | 825.4 M | 15,008 | 16,991 | 26,160 | 32,768 | 6 (0.01%) |
+| scale | 55,000 | 799.7 M | 14,541 | 16,303 | 25,775 | 32,768 | 1 (0.00%) |
+
+*(Token lengths are full tokenized sequence lengths from the pretokenize cache; the
+loss is masked to assistant tokens only, so supervised-token counts are lower.)*
 
 ## 6. LR-schedule integrity (why this is a rerun)
 
@@ -212,12 +230,9 @@ Ordered by cost. Items 1–3 need no retraining; items 4–5 are new training.
    lacks — it separates "scale's data is transferable" from "scale's data starts closer
    to SWE-Gym." Also add `eval_on_start: true` to future run configs so step 0 is
    logged natively.
-2. **Per-arm token counts and truncation rate at `cutoff_len` 32768 (log-mining).**
-   Arms are matched on *samples* (55k) but not tokens; the ~1 h wall-clock spread
-   implies materially different token counts. Truncation at 32k drops the *end* of a
-   trajectory — for SWE tasks that's the patch/submit turn, the most valuable
-   supervision — and per-arm truncation rates likely differ by pipeline. Add a row per
-   arm to §4/§5 (recoverable from the tokenized-cache length stats). *Values TBD.*
+2. ~~Per-arm token counts and truncation rate at `cutoff_len` 32768.~~ **Done** — see
+   the token-count table in §5. Truncation turned out negligible (≤0.03%), so the
+   end-of-trajectory clipping concern doesn't materially apply.
 3. **4×4 arm-by-family eval matrix (eval-only).** `v2_id_mix` pools all four families,
    so each arm's ID number conflates "how well it learned" with "how much of the pool
    resembles its own training data" (worse if the pool is size-weighted). Evaluate each
