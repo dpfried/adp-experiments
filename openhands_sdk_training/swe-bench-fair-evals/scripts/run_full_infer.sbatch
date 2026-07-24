@@ -49,6 +49,12 @@ VLLM_ARGS=(--model "$MODEL" --served-model-name "adp-eval-$TAG"
   --tensor-parallel-size "$TP" --max-model-len 32768 --dtype bfloat16
   --enable-auto-tool-choice --tool-call-parser qwen3_coder
   --gpu-memory-utilization 0.85 --port "$PORT")
+# Prefix caching: Qwen3.5's GDN hybrid disables vLLM automatic prefix caching by
+# default, so every agent turn re-prefills ~28k tokens (prompt throughput
+# dominates). --enable-prefix-caching --mamba-cache-mode align (vLLM>=0.24, PR
+# #30877) restores it (~13x less prefill compute per instance; Babel RESULTS.md).
+# On by default; PREFIX_CACHE=off to disable.
+[ "${PREFIX_CACHE:-on}" = "on" ] && VLLM_ARGS+=(--enable-prefix-caching --mamba-cache-mode align)
 [ -n "$CHAT_TEMPLATE" ] && VLLM_ARGS+=(--chat-template "$CHAT_TEMPLATE")
 VLLM_LOG="$SWEBENCH_ROOT/logs/vllm_${TAG}_$SLURM_JOB_ID.log"
 nohup "$SB_VENV_VLLM/bin/python" -m vllm.entrypoints.openai.api_server "${VLLM_ARGS[@]}" \
