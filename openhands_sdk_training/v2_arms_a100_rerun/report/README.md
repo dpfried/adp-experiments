@@ -190,6 +190,41 @@ difference here would not isolate verification anyway. Loss alone doesn't separa
 two; the SWE-bench resolution numbers (§8) are the real test. (Standard caveat:
 trajectory NLL is only weakly predictive of agentic rollout success.)
 
+### Per-family breakdown (arm × family eval matrix)
+
+The pooled `v2_id_mix` number conflates "how well an arm learned" with "how much of the
+pool looks like its own training data." Since `v2_id_mix` is exactly the four family
+carve-outs pooled (100 records each, tagged by `source_dataset`), we can un-pool it:
+each cell is the final checkpoint's eval loss on one family's 100-record held-out set.
+Diagonal = own-family fit; off-diagonal = cross-source transfer. (Pooled column
+reproduces the §7 `id_mix` numbers exactly, as a consistency check.)
+
+| model ↓ / eval family → | coderforge | scale | rebench | swezero | **pooled (id_mix)** |
+|---|---:|---:|---:|---:|---:|
+| untrained instruct | 0.481 | 0.423 | 0.462 | 0.483 | 0.462 |
+| **coderforge** | **0.284** | 0.324 | 0.310 | 0.339 | 0.314 |
+| **scale** | 0.356 | **0.256** | 0.357 | 0.391 | 0.340 |
+| **rebench** | 0.305 | 0.325 | **0.288** | 0.330 | 0.312 |
+| **swezero** | 0.333 | 0.331 | 0.328 | **0.311** | 0.326 |
+
+Reading it:
+
+- **Every arm fits its own family best** — the diagonal is each row's minimum, confirming
+  the arms actually specialized to their data rather than all converging to the same place.
+- **scale is a specialist**: it has by far the lowest own-family loss (0.256) yet the
+  *worst* cross-family transfer (0.356 / 0.357 / 0.391 on the three Qwen3-Coder families).
+  This is exactly why its **pooled** `id_mix` is *highest* (0.340) despite its best
+  own-fit — the pool is ¾ non-scale, so scale is judged mostly on families it transfers
+  to poorly. The pooled scalar would have hidden this entirely.
+- **coderforge and rebench are mutually compatible** (coderforge→rebench 0.310,
+  rebench→coderforge 0.305) — unsurprising, as both are Qwen3-Coder-480B-distilled.
+- Even **untrained**, the scale family is the easiest (0.423 vs ~0.46–0.48), i.e. the
+  DeepSeek-distilled distribution sits closest to the instruct model's priors — which
+  also helps explain scale's lower OOD SWE-Gym loss.
+- **Implication for the soup:** the arms behave like complementary specialists (strong
+  diagonal, weaker off-diagonal), which is the regime where model-souping tends to help;
+  scale is the clear outlier and its coefficient is worth examining separately.
+
 ## 8. SWE-bench Verified results — *placeholder*
 
 > Downstream eval (500-instance SWE-bench Verified via the OpenHands SDK harness) is
@@ -243,12 +278,9 @@ Ordered by cost. Items 1–3 need no retraining; items 4–5 are new training.
 2. ~~Per-arm token counts and truncation rate at `cutoff_len` 32768.~~ **Done** — see
    the token-count table in §5. Truncation turned out negligible (≤0.03%), so the
    end-of-trajectory clipping concern doesn't materially apply.
-3. **4×4 arm-by-family eval matrix (eval-only).** `v2_id_mix` pools all four families,
-   so each arm's ID number conflates "how well it learned" with "how much of the pool
-   resembles its own training data" (worse if the pool is size-weighted). Evaluate each
-   final checkpoint on **each family's** held-out carve-out: diagonal = own-fit,
-   off-diagonal = cross-source transfer. Far more informative than the pooled scalar,
-   and directly useful for choosing soup coefficients.
+3. ~~4×4 arm-by-family eval matrix (eval-only).~~ **Done** — see the matrix in §7. Each
+   arm fits its own family best (diagonal minima); scale is a specialist (best own-fit,
+   worst transfer), which the pooled scalar had hidden. Directly useful for the soup search.
 4. **Second seed on the coderforge/swezero pair.** ~2 × 14 h × 8 A100s — cheap
    insurance that the (small) headline gaps are real rather than seed noise (§7).
 5. **Same-pipeline verification toggle.** The only way to make the verification claim
