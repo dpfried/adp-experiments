@@ -115,7 +115,11 @@ trajectory is ~15k tokens and p95 ~26k, well inside the window.
 | scale | 55,000 | 799.7 M | 14,541 | 16,303 | 25,775 | 32,768 | 1 (0.00%) |
 
 *(Token lengths are full tokenized sequence lengths from the pretokenize cache; the
-loss is masked to assistant tokens only, so supervised-token counts are lower.)*
+loss is masked to assistant tokens only, so supervised-token counts are lower. Mean <
+median in every arm because the length distribution is **bimodal** — a large short mode
+(~35–41% of records under 8k tokens, e.g. short single-segment/condensation records)
+plus a dense cluster of long multi-turn trajectories near the 32k cap; the short mode
+pulls the mean below the median. Spot-checked against per-arm percentiles.)*
 
 ## 6. LR-schedule integrity (why this is a rerun)
 
@@ -171,6 +175,13 @@ so the curves *look* flat only because the plots begin after the fast early drop
 "essentially no transfer" — a step-0 artifact the anchor corrects, and the reason the
 anchor was worth measuring.)
 
+A caveat on what that early drop *means*: much of the step-0→50 fall is plausibly
+**format adaptation** rather than task-capability transfer. The untrained instruct model
+has never seen the exact OpenHands harness / tool-call rendering, so NLL on *anything* in
+that format drops fast regardless of SWE skill. So the early gain is real but partly
+formatting; the more interpretable signal is the **post-step-50 behavior** — scale's
+continued decline vs. the other three plateauing.
+
 Beyond step 50 the arms separate: **scale** keeps improving (0.439 → 0.415), while
 coderforge/swezero plateau (~0.45) and rebench sits highest (~0.46), all with a small
 early hump (~steps 250–350). Because every arm shares the *identical* untrained init,
@@ -224,6 +235,11 @@ Reading it:
 - **Implication for the soup:** the arms behave like complementary specialists (strong
   diagonal, weaker off-diagonal), which is the regime where model-souping tends to help;
   scale is the clear outlier and its coefficient is worth examining separately.
+
+*Sample-size caveat:* each family carve-out is only **100 records**, so small
+off-diagonal differences (e.g. coderforge→rebench 0.310 vs. rebench→coderforge 0.305)
+are within eval noise and shouldn't be over-read. The structural conclusions — diagonal
+minima, and scale's ~+0.10 cross-transfer gap — are large enough to be safe.
 
 ## 8. SWE-bench Verified results — *placeholder*
 
