@@ -11,10 +11,17 @@ Full-parameter supervised fine-tuning of **`Qwen/Qwen3.5-4B` (the *instruct* mod
 of the Babel (CMU) campaign, whose original runs were confounded by learning-rate
 schedule resets on preemption (fixed here with full-state checkpoints; see §6).
 
-Purpose: a SWE-bench data-recipe sweep plus the headline **verification contrast**
-(coderforge = resolution-verified vs swezero = unverified, both distilled from the same
-Qwen3-Coder-480B teacher), feeding a downstream model-soup coefficient search over the
-four task vectors.
+Purpose: a SWE-bench data-recipe sweep plus a **verified-vs-unverified *sources*
+comparison** (coderforge = resolution-verified vs swezero = unverified, both distilled
+from the same Qwen3-Coder-480B teacher), feeding a downstream model-soup coefficient
+search over the four task vectors.
+
+> **Confound caveat on the coderforge/swezero comparison.** These two arms share a
+> teacher but are otherwise *entirely different pipelines* — different task/repo
+> populations, prompts, and filtering. Resolution-verification is only one of several
+> differences, so any downstream gap between them **cannot be attributed to
+> verification alone**. A clean, causal verification contrast (same pipeline with
+> verification toggled on/off) is listed as future work (§10).
 
 > **Base-model note.** Earlier ADP "condenser" experiments used Qwen3.5 **base**
 > checkpoints (`Qwen3.5-4B-Base`, `0.8B-Base`, `9B`, `35B-A3B`). This v2 campaign is
@@ -59,6 +66,7 @@ OpenHands SDK format:
 |---|---|
 | Base model | `Qwen/Qwen3.5-4B` (instruct), full-parameter SFT |
 | Template / format | `qwen3_5_nothink`, OpenAI tool-calling |
+| Loss masking | assistant/response tokens only (LLaMA-Factory default: `train_on_prompt` unset → prompt, user, and tool-observation tokens are masked out of the loss). Both train and eval loss use this masking, so the curves measure per-assistant-token NLL. |
 | Sequence length (`cutoff_len`) | 32768 |
 | Samples / arm | 55,000 |
 | Epochs | 1 → **1719 optimizer steps** |
@@ -89,7 +97,7 @@ OpenHands SDK format:
   | scale | 8× A100-80GB | **13.6 h** |
 
   Campaign wall-clock ≈ **14.6 h** (arms run concurrently); aggregate ≈ **56 GPU-node-hours**
-  ≈ **~460 A100-GPU-hours**.
+  ≈ **~448 A100-GPU-hours** (4 arms × ~14 h × 8 GPUs).
 
 ## 6. LR-schedule integrity (why this is a rerun)
 
@@ -127,17 +135,32 @@ least.
 
 ![out-of-distribution val loss](img/v2_swegym_ood_loss.png)
 
-The OOD story inverts. **scale** generalizes best to held-out SWE-Gym (0.439 → 0.415,
-a clear downward trend), while the three Qwen3-Coder-480B-distilled arms stay nearly
-flat (coderforge/swezero ~0.45, rebench worst at ~0.46) — they fit their own
-distribution but transfer little to SWE-Gym. In other words, lowest ID loss
-(rebench/coderforge) does **not** predict best OOD loss (scale) — a caution against
-reading the ID curve as a proxy for generalization.
+**The OOD result is the headline: the three Qwen3-Coder-480B-distilled arms transfer
+essentially *nothing* to SWE-Gym in loss terms.** Net change over the full run is
+coderforge ~flat (0.449 → 0.450), swezero −0.005 (0.453 → 0.448), rebench −0.013
+(0.472 → 0.459) — all with an early *increase* (hump around steps 250–350) before
+drifting back. Only **scale** shows a genuine downward OOD trend (0.439 → 0.415).
 
-The headline **coderforge (verified) vs swezero (unverified)** contrast is small in
-loss terms: swezero edges coderforge on both ID (0.326 vs 0.314 — coderforge lower)
-and OOD (0.448 vs 0.450 — near-identical). Loss alone doesn't separate verified from
-unverified distillation here; the SWE-bench resolution numbers (§8) are the real test.
+Two important caveats on that scale reading. First, both plots start at **step 50**
+(the first eval point), and scale is already ~0.01–0.03 lower on OOD there than the
+other arms. Since all four arms share the *same* instruct init, the missing **step-0
+anchor** is exactly what would distinguish "scale's data teaches transferable
+behavior" from "scale's data simply sits closer to SWE-Gym to begin with" — we can't
+tell which from these curves. Running the untrained instruct model through both eval
+sets (§10, item 1) would resolve this. Second, all arms are a **single seed (42), one
+run each**, so small gaps are within plausible seed noise.
+
+So lowest ID loss (rebench/coderforge) does **not** predict best OOD loss (scale) — a
+caution against reading the ID curve as a generalization proxy — but the step-0 gap
+means we should not yet call scale's data causally "more transferable."
+
+The **coderforge (verified source) vs swezero (unverified source)** comparison is tiny
+in loss terms: coderforge is lower (better) on ID by 0.012 (0.314 vs 0.326), and the
+two are near-identical on OOD (0.450 vs 0.448). Both gaps (ID 0.012, OOD 0.002) are
+small and, at one seed, not clearly outside noise — and per the §1 confound, a
+difference here would not isolate verification anyway. Loss alone doesn't separate the
+two; the SWE-bench resolution numbers (§8) are the real test. (Standard caveat:
+trajectory NLL is only weakly predictive of agentic rollout success.)
 
 ## 8. SWE-bench Verified results — *placeholder*
 
@@ -154,7 +177,21 @@ unverified distillation here; the SWE-bench resolution numbers (§8) are the rea
 | scale (verified) | _TBD_ | _TBD_ | _TBD_ | |
 | rebench (verified) | _TBD_ | _TBD_ | _TBD_ | |
 | swezero (unverified) | _TBD_ | _TBD_ | _TBD_ | verification-contrast counterpart to coderforge |
+| uniform soup (equal weights) | _TBD_ | _TBD_ | _TBD_ | baseline soup |
+| best single arm | _TBD_ | _TBD_ | _TBD_ | baseline for the soup search |
 | model soup (best coeff) | _TBD_ | _TBD_ | _TBD_ | from coefficient search over the 4 task vectors |
+
+**Soup evaluation hygiene (protocol for the pending work):**
+
+- Include the **uniform soup** and the **best single arm** as baselines — a coefficient
+  search only earns its keep if it beats both.
+- **Do not tune the soup coefficients on the same 500 instances you report.** With 4
+  coefficients and a noisy 0/1 per-instance metric, that overfits easily. Search on a
+  **disjoint dev set** (a held-out Verified slice or SWE-bench Lite), fix the
+  coefficients, then evaluate the chosen soup on the full 500 **once**.
+- Fix decoding (temp, tool-parser, max turns) identically across all rows; report
+  non-empty-patch rate alongside resolved (empty patches were the dominant failure mode
+  in the 4B condenser eval).
 
 ## 9. Provenance
 
@@ -164,3 +201,31 @@ unverified distillation here; the SWE-bench resolution numbers (§8) are the rea
   for the full recipe rationale and integrity rules).
 - **Plots:** `img/v2_id_mix_loss.png`, `img/v2_swegym_ood_loss.png`, regenerated from
   wandb history (eval loss vs. training step, 36 eval points/arm at `eval_steps 50`).
+
+## 10. Planned additions & future work
+
+Ordered by cost. Items 1–3 need no retraining; items 4–5 are new training.
+
+1. **Untrained-baseline anchor on the loss plots (eval-only).** Run the untrained
+   instruct `Qwen/Qwen3.5-4B` through both eval sets once and draw it as a horizontal
+   line on each plot. This is the step-0 reference the OOD reading (§7) currently
+   lacks — it separates "scale's data is transferable" from "scale's data starts closer
+   to SWE-Gym." Also add `eval_on_start: true` to future run configs so step 0 is
+   logged natively.
+2. **Per-arm token counts and truncation rate at `cutoff_len` 32768 (log-mining).**
+   Arms are matched on *samples* (55k) but not tokens; the ~1 h wall-clock spread
+   implies materially different token counts. Truncation at 32k drops the *end* of a
+   trajectory — for SWE tasks that's the patch/submit turn, the most valuable
+   supervision — and per-arm truncation rates likely differ by pipeline. Add a row per
+   arm to §4/§5 (recoverable from the tokenized-cache length stats). *Values TBD.*
+3. **4×4 arm-by-family eval matrix (eval-only).** `v2_id_mix` pools all four families,
+   so each arm's ID number conflates "how well it learned" with "how much of the pool
+   resembles its own training data" (worse if the pool is size-weighted). Evaluate each
+   final checkpoint on **each family's** held-out carve-out: diagonal = own-fit,
+   off-diagonal = cross-source transfer. Far more informative than the pooled scalar,
+   and directly useful for choosing soup coefficients.
+4. **Second seed on the coderforge/swezero pair.** ~2 × 14 h × 8 A100s — cheap
+   insurance that the (small) headline gaps are real rather than seed noise (§7).
+5. **Same-pipeline verification toggle.** The only way to make the verification claim
+   *causal*: one pipeline, verification switched on vs off, everything else held fixed
+   (§1 confound).
