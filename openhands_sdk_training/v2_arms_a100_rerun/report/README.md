@@ -134,43 +134,53 @@ Final losses (step 1719):
 
 | arm | final train loss | final `v2_id_mix` (ID) | final `v2_swegym_ood` (OOD) |
 |---|---:|---:|---:|
+| _untrained instruct (step 0)_ | _–_ | _0.462_ | _0.573_ |
 | coderforge | 0.304 | 0.314 | 0.450 |
 | scale | 0.284 | 0.340 | **0.415** |
 | rebench | 0.313 | **0.312** | 0.459 |
 | swezero | 0.315 | 0.326 | 0.448 |
 
+The **untrained instruct** row is the shared step-0 anchor (all arms start here) — it is
+the horizontal line on both plots below. It was measured directly by running
+`Qwen/Qwen3.5-4B` through both eval splits with the *same* masking as the curves; the
+same harness reproduces all four trained endpoints to ±0.0001 vs. wandb, so it is
+faithful. Improvements from baseline: ID 0.462 → 0.31–0.34 (−0.12 to −0.15); OOD 0.573 →
+0.415–0.459 (−0.11 to −0.16).
+
 ### In-distribution validation loss (`v2_id_mix`)
 
 ![in-distribution val loss](img/v2_id_mix_loss.png)
 
-All four arms decrease smoothly and monotonically after warmup. **rebench** and
+All four arms decrease smoothly and monotonically after warmup, dropping from the shared
+untrained baseline (0.462, the horizontal line) to 0.31–0.34. **rebench** and
 **coderforge** reach the lowest ID loss (~0.312–0.314); **scale** is consistently
 highest on the ID mixture (~0.340) — expected, since scale is the only arm distilled
 from a different teacher (DeepSeek v3.2) and its distribution overlaps the ID mixture
-least.
+least. Unlike OOD, ID loss keeps falling across the whole run rather than plateauing early.
 
 ### Out-of-distribution validation loss (`v2_swegym_ood`)
 
 ![out-of-distribution val loss](img/v2_swegym_ood_loss.png)
 
-**The OOD result is the headline: the three Qwen3-Coder-480B-distilled arms transfer
-essentially *nothing* to SWE-Gym in loss terms.** Net change over the full run is
-coderforge ~flat (0.449 → 0.450), swezero −0.005 (0.453 → 0.448), rebench −0.013
-(0.472 → 0.459) — all with an early *increase* (hump around steps 250–350) before
-drifting back. Only **scale** shows a genuine downward OOD trend (0.439 → 0.415).
+**With the step-0 anchor in place, the OOD story is: all four arms transfer meaningfully
+to SWE-Gym, but almost all of the gain lands in the first ~50 steps and then plateaus.**
+From the shared untrained baseline (0.573), every arm drops to 0.415–0.459 — a −0.11 to
+−0.16 improvement — but by the first eval point (step 50) each is already at ~0.44–0.47,
+so the curves *look* flat only because the plots begin after the fast early drop.
+(An earlier draft of this report, written before the anchor existed, wrongly called the
+non-scale arms "essentially no transfer" — that was exactly the step-0 artifact the
+anchor corrects.)
 
-Two important caveats on that scale reading. First, both plots start at **step 50**
-(the first eval point), and scale is already ~0.01–0.03 lower on OOD there than the
-other arms. Since all four arms share the *same* instruct init, the missing **step-0
-anchor** is exactly what would distinguish "scale's data teaches transferable
-behavior" from "scale's data simply sits closer to SWE-Gym to begin with" — we can't
-tell which from these curves. Running the untrained instruct model through both eval
-sets (§10, item 1) would resolve this. Second, all arms are a **single seed (42), one
-run each**, so small gaps are within plausible seed noise.
+Beyond step 50 the arms separate: **scale** keeps improving (0.439 → 0.415), while
+coderforge/swezero plateau (~0.45) and rebench sits highest (~0.46), all with a small
+early hump (~steps 250–350). Because every arm shares the *identical* untrained init,
+scale's lower OOD is **earned during training, not a starting-point artifact** — its
+data genuinely teaches more SWE-Gym-transferable behavior. (Standard single-seed caveat
+still applies to the small gaps between the other three.)
 
 So lowest ID loss (rebench/coderforge) does **not** predict best OOD loss (scale) — a
-caution against reading the ID curve as a generalization proxy — but the step-0 gap
-means we should not yet call scale's data causally "more transferable."
+caution against reading the ID curve as a generalization proxy — but the shared step-0
+anchor now lets us attribute scale's OOD edge to its data rather than to initialization.
 
 The **coderforge (verified source) vs swezero (unverified source)** comparison is tiny
 in loss terms: coderforge is lower (better) on ID by 0.012 (0.314 vs 0.326), and the
@@ -224,12 +234,12 @@ trajectory NLL is only weakly predictive of agentic rollout success.)
 
 Ordered by cost. Items 1–3 need no retraining; items 4–5 are new training.
 
-1. **Untrained-baseline anchor on the loss plots (eval-only).** Run the untrained
-   instruct `Qwen/Qwen3.5-4B` through both eval sets once and draw it as a horizontal
-   line on each plot. This is the step-0 reference the OOD reading (§7) currently
-   lacks — it separates "scale's data is transferable" from "scale's data starts closer
-   to SWE-Gym." Also add `eval_on_start: true` to future run configs so step 0 is
-   logged natively.
+1. ~~Untrained-baseline anchor on the loss plots (eval-only).~~ **Done** — the untrained
+   instruct `Qwen/Qwen3.5-4B` was run through both eval splits (ID 0.462, OOD 0.573) and
+   is drawn as the horizontal line on both plots. This resolved the step-0 ambiguity in
+   §7 (scale's OOD edge is earned, not a starting-point artifact) and corrected the
+   earlier "no OOD transfer" misread. *Still recommended for future runs:* add
+   `eval_on_start: true` so step 0 is logged natively rather than reconstructed.
 2. ~~Per-arm token counts and truncation rate at `cutoff_len` 32768.~~ **Done** — see
    the token-count table in §5. Truncation turned out negligible (≤0.03%), so the
    end-of-trajectory clipping concern doesn't materially apply.
