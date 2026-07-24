@@ -34,6 +34,12 @@ ARMS = {
     "scale": "scale_swe_distilled",
     "rebench": "nebius_SWE-rebench-openhands-trajectories",
     "swezero": "nvidia_SWE-Zero-openhands-trajectories",
+    # pooled equal-mix joint-training baselines for the souping study: the union of
+    # the 4 arms' training records (round-robin), one model trained on the mix. The
+    # data dir here is built externally (concatenated arm subsets); --max-samples must
+    # be set to the full pooled size so pretok does not truncate to the first-N rows.
+    "pooled220k": "pooled220k",
+    "pooled55k": "pooled55k",
 }
 
 DI_ENTRY = {
@@ -58,7 +64,7 @@ eval_on_each_dataset: true
 dataset_dir: {data_dir}
 template: qwen3_5_nothink
 cutoff_len: 32768
-max_samples: 55000
+max_samples: {max_samples}
 overwrite_cache: true
 preprocessing_num_workers: 8
 tokenized_path: {tok_path}
@@ -332,7 +338,7 @@ def main() -> None:
                    ds_train=ds_train, ds_eval=ds_eval, partition=args.partition,
                    gres=args.gres, time=args.time, nproc=args.gpus_per_node,
                    grad_accum=grad_accum, per_device_bs=args.per_device_bs,
-                   zero_stage=args.zero_stage, wandb_project=args.wandb_project,
+                   zero_stage=args.zero_stage, wandb_project=args.wandb_project, max_samples=args.max_samples,
                    run_suffix=run_suffix, smoke_line=smoke_line,
                    save_steps=save_steps, eval_steps=eval_steps,
                    account_line=f"#SBATCH --account={args.account}\n" if args.account else "")

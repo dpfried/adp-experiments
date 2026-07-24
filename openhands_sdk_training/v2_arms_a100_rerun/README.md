@@ -308,3 +308,46 @@ specced in `../analysis/adp_v2_data_analysis_report.md` §6 and currently lives 
 Babel (`~dfried/exp/adp-smoke/swebench/`) — port or ship checkpoints back as decided
 later. Keep each arm's full `trainer_log.jsonl` and wandb run; they are the evidence
 the schedules were clean.
+
+## 10. Pooled joint-training baselines (souping comparator)
+
+The souping study (§9; analysis report §6) compares weight-space merges of the four arms
+against actually training one model on the pooled data. `generate_arm_runs.py` supports two
+extra "arms" for that baseline — `pooled220k` and `pooled55k` — plus a `--max-samples` flag.
+
+Both train `Qwen/Qwen3.5-4B` on the union of the four arms' training records with the
+**identical** recipe (same init θ₀, eval sets, ZeRO stage, global batch 32, LR schedule,
+seed), so val-loss curves are directly comparable and the merges share the baseline's init:
+
+| arm | mix | records | ~steps | role |
+|---|---|---:|---:|---|
+| `pooled220k` | 55K/arm round-robin | 220,000 | 6,875 | **data-matched** (a soup aggregates 4×55K records of training) |
+| `pooled55k` | 13.75K/arm round-robin | 55,000 | 1,719 | **compute-matched** (one-arm budget) |
+
+Build the pooled data dir yourself (the generator does not sample the union) — a balanced
+round-robin interleave of the per-arm `train.llamafactory.jsonl` files, sized so the file
+length equals `--max-samples` (no truncation; HF Trainer shuffles training order via `seed`):
+
+```bash
+D=$DATA_ROOT/v2_swe_subsets
+mkdir -p $D/pooled220k
+paste -d '\n' \
+  <(head -n 55000 $D/coderforge_preview/train.llamafactory.jsonl) \
+  <(head -n 55000 $D/scale_swe_distilled/train.llamafactory.jsonl) \
+  <(head -n 55000 $D/nebius_SWE-rebench-openhands-trajectories/train.llamafactory.jsonl) \
+  <(head -n 55000 $D/nvidia_SWE-Zero-openhands-trajectories/train.llamafactory.jsonl) \
+  > $D/pooled220k/train.llamafactory.jsonl   # 220,000 lines
+# pooled55k: same with `head -n 13750` -> 55,000 lines
+```
+
+Then generate + launch (same flags as §6, plus `--max-samples` = the pooled record count):
+
+```bash
+python generate_arm_runs.py ... --arms pooled220k --max-samples 220000 --time 3-00:00:00 \
+  --eval-set v2_id_mix=/abs/v2_id_mix.llamafactory.jsonl \
+  --eval-set v2_swegym_ood=/abs/v2_swegym_ood.llamafactory.jsonl
+python generate_arm_runs.py ... --arms pooled55k  --max-samples 55000  [same --eval-set flags]
+```
+
+`--max-samples` is REQUIRED for `pooled220k`: pretok's `max_samples` defaults to 55000 and
+truncates to the first-N rows, which for a concatenated file is one source only, not the mix.
