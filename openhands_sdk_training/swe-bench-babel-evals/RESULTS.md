@@ -17,16 +17,37 @@ in-training eval every 50 steps. Scripts in `scripts/`, configs in `configs/`.
 
 ## Results (SWE-bench Verified, 500 instances, temp 0, single greedy run)
 
-| Arm | Init | Training data | Resolved | Notes |
-|---|---|---|---:|---|
-| base4b | Qwen3.5-4B-Base (raw) | — | *running* | 393/500 attempted; Graham measured 25/500 (5.0%) on his infra |
-| papernonweb1154 | Base | ADP-paper openhands_nonweb (~40k) | **52/500 (10.4%)** | final; 69% non-empty patches; train_loss 0.247, eval_loss 0.281 |
-| swesmith540 | Base | SWE-smith condenser SFT | **74/491 (15.1%)** | 9 instances still scoring; 93% non-empty patches |
-| swesmithinstruct540 | **Instruct** | SWE-smith condenser SFT (same as above) | *scoring; 20/96 (~21%) partial* | init ablation vs swesmith540; eval_loss 0.126 vs 0.131 |
-| rawinstruct4b | Qwen3.5-4B (instruct, raw) | — | *running* | decomposes instruct-init gains; native chat template |
+> [!WARNING]
+> **Every row below is affected by infra-error bias, and all arms are being re-run** (2026-07-26).
+> The harness counts an errored instance as *completed*, so resubmits never retried failures — and
+> the error rate varied wildly by arm (0% to 86%), almost all traceable to the tir1 NFS brownout of
+> 2026-07-16/17 plus a since-fixed `git rev-parse` bug. This makes the "Resolved / 500" column
+> non-comparable across arms. See [`INFRA_ERROR_ANALYSIS.md`](INFRA_ERROR_ANALYSIS.md).
 
-Early ordering: **instruct-init + SWE-smith > base-init + SWE-smith > base-init +
-paper-nonweb > raw base** — i.e. data quality first, then init, each roughly stacking.
+| Arm | Init | Training data | Resolved /500 | Errored | Conditional rate | Status |
+|---|---|---|---:|---:|---:|---|
+| base4b | Qwen3.5-4B-Base (raw) | — | 53 | **279 (56%)** | — | ⚠️ invalid, re-running |
+| rawinstruct4b | Qwen3.5-4B (instruct, raw) | — | 13 | **431 (86%)** | — | ⚠️ **unmeasured**, re-running |
+| papernonweb1154 | Base | ADP-paper openhands_nonweb (~40k) | 52 (10.4%) | 16 (3%) | 52/484 = 10.7% | re-running 16 |
+| swesmith540 | Base | SWE-smith condenser SFT | 74 (14.8%) | 9 (2%) | 74/491 = 15.1% | re-running 8 |
+| swesmithinstruct540 | **Instruct** | SWE-smith condenser SFT (same) | 82 (16.4%) | **61 (12%)** | 82/439 = 18.7% | re-running 61 |
+
+Ordering — **instruct-init + SWE-smith > base-init + SWE-smith > base-init + paper-nonweb** — is
+probably safe, but *the size of the init gap is not determined by this data*. swesmithinstruct540
+lost 61 instances to infra (all of them infra; zero MaxIterations) against swesmith540's 9, so the
+two available estimators bracket the answer from opposite sides:
+
+- **raw rate** (errors counted as failures) understates instruct-init: 16.4% vs 14.8% → **+1.6pp**
+- **conditional rate** (errors dropped) overstates it: 18.7% vs 15.1% → **+3.6pp**
+
+Conditional overstates because errors concentrate in `django`/`matplotlib` — the largest repos and
+the hardest instances — so dropping them removes hard work from the denominator, and it removes
+6.8× more of it from the instruct arm. The true init effect lies somewhere in +1.6 to +3.6pp and
+needs the re-run to pin down. Note the ±1–2pp noise band below spans most of that range.
+
+**The "vs raw base" leg is currently unsupported** — both raw-model baselines are invalid, so the
+campaign cannot yet say by how much fine-tuning beats no fine-tuning, only that the fine-tunes beat
+Graham's 25/500 reference measured on different infra.
 Both fine-tunes clearly reverse Graham's regression finding: his checkpoint was
 mid-cosine-decay at 38% of an epoch; trained to completion, the same 4B + agentic SFT
 data beats base by 2–3×.
