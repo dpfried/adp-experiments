@@ -19,7 +19,7 @@ _STATUS 2026-07-26 (VERIFIED, **PROVISIONAL pending pooled220k joint-train**). �
 
 **Data defects = candidate LEVERS, not a proven cause (devils-advocate):** agent-b's data findings (~40% non-solve/condensation records, no quality filter, arm-asymmetric 28k truncation) are *candidate* curation levers with **untested** effect — the 40%-condensation sign is two-sided (dilution to cut, OR a real context-mgmt skill SBV doesn't score). The real remaining research question = does **quality-filtered** data lift over the measured ~25% base? (Data curation, not post-hoc merging.)
 
-**Methods lesson (transferable):** never headline a delta whose baseline is an unmeasured anchor — measure θ₀ under the identical harness first. (Provenance of the original "~5%" being traced Babel-side; leading hypothesis = base-vs-instruct model mismatch.)
+**Methods lesson (transferable):** never headline a delta whose baseline is an unmeasured anchor — measure θ₀ under the identical harness first. (Provenance RESOLVED 2026-07-26: the "~5%" was Qwen3.5-4B-*Base* (non-instruct) per Graham's Babel RESULTS.md line 22 — a base-vs-instruct mismatch, H1 confirmed; see "ANCHOR PROVENANCE — RESOLVED" section below.)
 
 - **HEADLINE RETRACTED (2026-07-25, see H3-FALSIFIED below): the "SFT lift" was measured against an UNMEASURED baseline.** "θ₀ ≈5%" was a borrowed sanity-anchor (25/500, cross-campaign/Babel ref) NEVER run for this θ₀; "+50/500 hugely significant" was an arithmetic gap to that placeholder, NOT a paired McNemar (no measured θ₀ resolved-set existed). MEASURED single-run θ₀ = 119/500 (~24%, provenance-verified 2026-07-26 — see "θ₀ RESOLVED" section below) => SFT-lift is NULL-to-NEGATIVE: no arm significantly beats base (clean-301 +10, p=0.30 n.s.); coderforge/scale significantly BELOW base — the one
   effect comfortably resolvable at n=500 ("the paper sentence"; θ₀ denominator now fixed = 119/500 verified).
@@ -514,3 +514,22 @@ uniform4 (α=1.0)        50
 - Dropping the weak/wrong-direction arms (top-2, and scale has the largest ‖τ‖ but worst score) helps most among soups (+12 vs uniform4) but does NOT rescue merging.
 
 **NET CAMPAIGN VERDICT (soup + base sides):** on SWE-bench Verified, ADP-v2 SFT on this raw data gives **no general lift over the base instruct model** and **catastrophically forgets specific known repos (sympy)**; **weight-merging the arms is strictly a loss** (every soup significantly below base and best arm, via residual-drop). The only combine method not yet scored is **pooled220k (joint-train)** — the last candidate that could beat base. Real remaining research question (per devils-advocate): does **quality-filtered** data lift over the measured ~25% base? (Data curation, not post-hoc merging.)
+
+### ★★ θ₀ "~5%" ANCHOR PROVENANCE — RESOLVED (2026-07-26, via Babel swe-bench-babel-evals/RESULTS.md) — H1 CONFIRMED
+The long-suspect "~5% base" anchor is now sourced to a file-backed Babel eval. RESULTS.md (Graham's base-init
+campaign) line 22 records **Graham measured Qwen3.5-4B-*Base* (raw, NON-instruct) = 25/500 (5.0%)** on his infra.
+⇒ the ~5% was the **base (non-instruct) model**, NOT the instruct model the FAIR arms were fine-tuned from
+(θ₀ = Qwen3.5-4B *instruct* = 119/500 ≈ 24%). So the campaign's "SFT lift 5%→15%" pitted instruct-init arms
+against a **base-model** baseline — a base-vs-instruct MISMATCH, not a fabrication. **Confirms hypothesis H1 of
+the provenance brief.**
+- The companion "paper-nonweb ≈ 52/500 (10.4%)" is ALSO real and base-init: RESULTS.md line 23 = papernonweb1154
+  (Base + ADP-paper openhands_nonweb ~40k) = 52/500.
+- RESULTS.md is a BASE-init campaign and correctly finds SFT beats raw *base* 2–3× (5%→10–15%, "data quality
+  first, then init, each stacking"). This does NOT contradict FAIR's instruct-init null: raw base 5% →SFT→
+  ~10–15%; raw instruct 24% →SFT→ ≤24%. Both internally correct; only cross-applying the base anchor to
+  instruct-init arms was the error.
+- CORROBORATION (cross-infra, cross-data): RESULTS.md swesmithinstruct540 (instruct-init + SWE-smith) is partial
+  at ~21%, sitting at/below the ~24% instruct base — independently agrees with FAIR's "instruct-init SFT does not
+  beat the instruct base."
+- OPEN (Babel agent, in progress): did rawinstruct4b (raw *instruct* baseline) ever complete on Babel? A finished
+  number is the cleanest cross-infra check of FAIR's θ₀ = 119/500 (~24%). (main-worker, from RESULTS.md)
