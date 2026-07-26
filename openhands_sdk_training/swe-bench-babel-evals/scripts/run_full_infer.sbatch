@@ -2,16 +2,19 @@
 #SBATCH --job-name=swebench-full-infer
 #SBATCH --partition=general
 #SBATCH --gres=gpu:L40S:2
-#SBATCH --exclude=babel-o5-28,babel-n5-32,babel-p5-28,babel-s5-24
+#SBATCH --exclude=babel-o5-28,babel-n5-32,babel-p5-28,babel-s5-24,babel-p5-16
 #SBATCH --cpus-per-task=32
-#SBATCH --mem=200G
-#SBATCH --time=1-00:00:00
+#SBATCH --mem=350G
+#SBATCH --time=2-00:00:00
 #SBATCH --open-mode=append
 #SBATCH --output=/home/dfried/exp/adp-smoke/swebench/logs/%x-%j.out
 #SBATCH --error=/home/dfried/exp/adp-smoke/swebench/logs/%x-%j.err
 
 # Full 500-instance SWE-bench Verified inference for one model.
-#   sbatch run_full_infer.sbatch <MODEL_PATH> <TAG> [CHAT_TEMPLATE]
+#   sbatch run_full_infer.sbatch <MODEL_PATH> <TAG> [CHAT_TEMPLATE] [CACHE=on|off]
+#     CACHE=on adds --enable-prefix-caching --mamba-cache-mode align
+#     (GDN hybrid support, vLLM>=0.24; verdict from the 20-instance A/B:
+#     no outcome effect, 13.6x less prefill compute). Default off.
 #     MODEL_PATH    HF id or local checkpoint dir (e.g. .../checkpoint-540)
 #     TAG           short label; names the served model, output dir, wandb-free
 #     CHAT_TEMPLATE optional --chat-template file for vLLM. REQUIRED for the
@@ -25,6 +28,7 @@ set -uo pipefail
 MODEL=${1:?usage: sbatch run_full_infer.sbatch MODEL_PATH TAG [CHAT_TEMPLATE]}
 TAG=${2:?usage: sbatch run_full_infer.sbatch MODEL_PATH TAG [CHAT_TEMPLATE]}
 CHAT_TEMPLATE=${3:-}
+CACHE=${4:-off}
 
 SB=/home/dfried/exp/adp-smoke/swebench
 export PATH="$SB/.venv_vllm/bin:$HOME/.local/bin:$PATH"   # venv bin first: flashinfer JIT needs `ninja`
@@ -35,10 +39,21 @@ DATA=/data/tir/projects/tir1/users/dfried/exp/adp-smoke/openhands
 mkdir -p "$DATA" || { echo "FATAL: tir1 bulk storage unavailable at $DATA (compute nodes only)"; exit 1; }
 export OPENHANDS_APPTAINER_BUILD_ROOT=$DATA/agent-images
 export APPTAINER_CACHEDIR=$DATA/apptainer-cache
-export OPENHANDS_APPTAINER_WORKSPACE_ROOT=$DATA/workspaces
+# Workspaces are per-instance testbed copies (~150-300MB each, up to 500*3 attempts/run) that
+# the harness NEVER deletes — on tir1 they accumulated 8,948 dirs and filled the volume on
+# 07-15/16, ENOSPC-failing 415/500 coderforge instances. Node-local scratch + trap instead.
+export OPENHANDS_APPTAINER_WORKSPACE_ROOT=/scratch/dfried/openhands-workspaces-$SLURM_JOB_ID
 export APPTAINER_TMPDIR=/scratch/dfried/apptainer-tmp-$SLURM_JOB_ID
+trap 'rm -rf "$OPENHANDS_APPTAINER_WORKSPACE_ROOT" "$APPTAINER_TMPDIR"' EXIT
 mkdir -p "$APPTAINER_TMPDIR" "$OPENHANDS_APPTAINER_BUILD_ROOT" "$APPTAINER_CACHEDIR" "$OPENHANDS_APPTAINER_WORKSPACE_ROOT"
+df -h /scratch /data/tir/projects/tir1/users/dfried | tail -n +2   # fail-fast visibility on both pools
 export OPENHANDS_SWEBENCH_IMAGE_TEMPLATE="ghcr.io/epoch-research/swe-bench.eval.{arch}.{instance_id}:latest"
+# Pin the agent-image tag prefix (matches the 1001 prebuilt SIFs in agent-images/).
+# Without this, every prepare_workspace shells out to `git rev-parse --show-toplevel`
+# with NO cwd arg (build_base_images._get_repo_root) — that call started failing with
+# exit 128 mid-run on 07-16/17 and mass-failed 1223 coderforge + 1113 rawinstruct
+# instances in seconds. Env var short-circuits the git call entirely.
+export IMAGE_TAG_PREFIX=43376f1-93c33d0
 export HF_HOME=/home/dfried/exp/adp-smoke/hf_cache
 unset HF_HUB_OFFLINE   # needs princeton-nlp/SWE-bench_Verified
 
@@ -50,6 +65,8 @@ VLLM_ARGS=(--model "$MODEL" --served-model-name "adp-eval-$TAG"
   --enable-auto-tool-choice --tool-call-parser qwen3_coder
   --gpu-memory-utilization 0.85 --port $PORT)
 [ -n "$CHAT_TEMPLATE" ] && VLLM_ARGS+=(--chat-template "$CHAT_TEMPLATE")
+[ "$CACHE" = "on" ] && VLLM_ARGS+=(--enable-prefix-caching --mamba-cache-mode align)
+echo "== prefix cache: $CACHE =="
 nohup "$SB/.venv_vllm/bin/python" -m vllm.entrypoints.openai.api_server "${VLLM_ARGS[@]}" \
   > "$SB/logs/vllm_full_${TAG}_$SLURM_JOB_ID.log" 2>&1 &
 VLLM_PID=$!
