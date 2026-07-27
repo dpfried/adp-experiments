@@ -10,16 +10,16 @@ Framing: this is about **what the experiment teaches**, not leaderboard rank._
 ## TL;DR
 _STATUS 2026-07-26 (VERIFIED, **PROVISIONAL pending pooled220k joint-train**). θ₀ resolved = 119/500 provenance-clean base; all 4 arms + full soup/α-sweep scored. See the "θ₀ RESOLVED" + "SFT-LIFT VERDICT" sections at the end for file-backed detail._
 
-**Bottom line (one sentence):** Raw ADP first-55k SFT does **not** improve a **~24-26% base** (Qwen3.5-4B instruct, single-run pass@1) and **significantly degrades it on domains the base already knew** (sympy 29/75 → 3/75); **no weight-merge of the arms recovers it** — every soup is significantly below base and the best arm (joint-train pooled220k **PENDING**, honest prior ≤ base). The apparent "5%→15% SFT lift" was an **unmeasured-baseline artifact** (the "~5%" was never file-backed; true base ≈24%, ~5×).
+**Bottom line (one sentence):** Raw ADP first-55k SFT does **not** improve a **~24% base** (Qwen3.5-4B instruct, single-run pass@1) and **significantly degrades it across the base's domains** (base ≥ best arm on 9/10 repos; sympy 29/75 → 3/75); **no weight-merge of the arms recovers it** — every soup is significantly below base and the best arm (joint-train pooled220k **PENDING**, honest prior ≤ base). The apparent "5%→15% SFT lift" was a **wrong-checkpoint-class baseline artifact**: the "~5%" was a *real* measurement — of Qwen3.5-4B-*Base*, not the *instruct* θ₀ (=119 ≈24%) the arms init from (~5× off).
 
 **Three findings, kept separate (per-board, so they don't blur):**
 1. **No significant general lift** — clean-301 (fair general board): base 76 vs best arm (swezero) 66 = **+10, McNemar p=0.30, n.s.**; django (clean, 231) 51≈53 tie. ("No significant lift," NOT equivalence, NOT "base wins.")
-2. **Repo-specific catastrophic forgetting** — sympy base 29 → arms 3-8 (swezero trained on sympy yet collapsed); the true source of the naive full-500 "+42 base≫arms", NOT a general gap.
+2. **Systematic degradation across the base's domains** — base ≥ best-of-4-arms on **9/10 repos** (only django favors an arm, +2); aggregate **+38/500**, concentrated in sympy (+21) & sklearn (+8) but present even on clean never-trained repos (sklearn/pytest) ⇒ genuine forgetting, not contamination. Resolvable claims = the aggregate +38 and the 9/10 directional consistency (per-repo deltas mostly within-noise). This — not a general-capability gap — is the true source of the naive full-500 "+42 base≫arms". (See MULTI-REPO FORGETTING section.)
 3. **Weight-merging strictly loses** — combine board base 119 ≫ swezero 77 > … > top2-soup 62 > uniform4 50 > α1.55 38 > α2.0 19; the α-line maximum is α=0 (=base) by construction; every measured soup < base & < best arm (residual-drop, not a norm deficit; (0,0.7) unmeasured → no strict-cliff claim). Cemented claim = **no WEIGHT-MERGE beats base**; joint-train is the one untested method that could.
 
-**Data defects = candidate LEVERS, not a proven cause (devils-advocate):** agent-b's data findings (~40% non-solve/condensation records, no quality filter, arm-asymmetric 28k truncation) are *candidate* curation levers with **untested** effect — the 40%-condensation sign is two-sided (dilution to cut, OR a real context-mgmt skill SBV doesn't score). The real remaining research question = does **quality-filtered** data lift over the measured ~25% base? (Data curation, not post-hoc merging.)
+**Data defects = candidate LEVERS, not a proven cause (devils-advocate):** agent-b's data findings (~40% non-solve/condensation records, no quality filter, arm-asymmetric 28k truncation) are *candidate* curation levers with **untested** effect — the 40%-condensation sign is two-sided (dilution to cut, OR a real context-mgmt skill SBV doesn't score). The real remaining research question = does **quality-filtered** data lift over the measured ~24% base? (Data curation, not post-hoc merging.)
 
-**Methods lesson (transferable):** never headline a delta whose baseline is an unmeasured anchor — measure θ₀ under the identical harness first. (Provenance RESOLVED 2026-07-26: the "~5%" was Qwen3.5-4B-*Base* (non-instruct) per Graham's Babel RESULTS.md line 22 — a base-vs-instruct mismatch, H1 confirmed; see "ANCHOR PROVENANCE — RESOLVED" section below.)
+**Methods lesson (transferable):** a baseline must be the *exact init checkpoint*. The "~5%" was a *real* measurement — but of the **base** model, while the arms init from **instruct** (θ₀=119 ≈24%), so the "5%→15% lift" silently compared across model classes. The failure was a *wrong-checkpoint-class* baseline (not merely an *unmeasured* one); always eval θ₀ = the arms' actual init under the identical harness. (Provenance RESOLVED 2026-07-26: the "~5%" was Qwen3.5-4B-*Base* (non-instruct) per Graham's Babel RESULTS.md line 22 — a base-vs-instruct mismatch, H1 confirmed; see "ANCHOR PROVENANCE — RESOLVED" section below.)
 
 - **HEADLINE RETRACTED (2026-07-25, see H3-FALSIFIED below): the "SFT lift" was measured against an UNMEASURED baseline.** "θ₀ ≈5%" was a borrowed sanity-anchor (25/500, cross-campaign/Babel ref) NEVER run for this θ₀; "+50/500 hugely significant" was an arithmetic gap to that placeholder, NOT a paired McNemar (no measured θ₀ resolved-set existed). MEASURED single-run θ₀ = 119/500 (~24%, provenance-verified 2026-07-26 — see "θ₀ RESOLVED" section below) => SFT-lift is NULL-to-NEGATIVE: no arm significantly beats base (clean-301 +10, p=0.30 n.s.); coderforge/scale significantly BELOW base — the one
   effect comfortably resolvable at n=500 ("the paper sentence"; θ₀ denominator now fixed = 119/500 verified).
@@ -513,7 +513,7 @@ uniform4 (α=1.0)        50
 - **α-sweep is MONOTONE DECREASING** (α0.7=54 → 1.0=50 → 1.55=38 → 2.0=19): capability *decreases* with ‖soup-τ‖. ⇒ the merge deficit is **RESIDUAL-DROP, not a norm deficit** — averaging keeps only the shared direction s (0.646× arm norm) and discards the ~76% residual where arm-specific capability lives; rescaling s can't recover it and overshoot (α>1) adds incoherence. Hole-1 resolved.
 - Dropping the weak/wrong-direction arms (top-2, and scale has the largest ‖τ‖ but worst score) helps most among soups (+12 vs uniform4) but does NOT rescue merging.
 
-**NET CAMPAIGN VERDICT (soup + base sides):** on SWE-bench Verified, ADP-v2 SFT on this raw data gives **no general lift over the base instruct model** and **catastrophically forgets specific known repos (sympy)**; **weight-merging the arms is strictly a loss** (every soup significantly below base and best arm, via residual-drop). The only combine method not yet scored is **pooled220k (joint-train)** — the last candidate that could beat base. Real remaining research question (per devils-advocate): does **quality-filtered** data lift over the measured ~25% base? (Data curation, not post-hoc merging.)
+**NET CAMPAIGN VERDICT (soup + base sides):** on SWE-bench Verified, ADP-v2 SFT on this raw data gives **no general lift over the base instruct model** and **systematically degrades the base across its domains (base ≥ best arm on 9/10 repos; concentrated in sympy/sklearn)**; **weight-merging the arms is strictly a loss** (every soup significantly below base and best arm, via residual-drop). The only combine method not yet scored is **pooled220k (joint-train)** — the last candidate that could beat base. Real remaining research question (per devils-advocate): does **quality-filtered** data lift over the measured ~24% base? (Data curation, not post-hoc merging.)
 
 ### ★★ θ₀ "~5%" ANCHOR PROVENANCE — RESOLVED (2026-07-26, via Babel swe-bench-babel-evals/RESULTS.md) — H1 CONFIRMED
 The long-suspect "~5% base" anchor is now sourced to a file-backed Babel eval. RESULTS.md (Graham's base-init
@@ -533,3 +533,25 @@ the provenance brief.**
   beat the instruct base."
 - OPEN (Babel agent, in progress): did rawinstruct4b (raw *instruct* baseline) ever complete on Babel? A finished
   number is the cleanest cross-infra check of FAIR's θ₀ = 119/500 (~24%). (main-worker, from RESULTS.md)
+
+
+### ★ MULTI-REPO FORGETTING — systematic, not sympy-only (2026-07-27, devils-advocate; base = init_singlerun vs arms resolved_ids, per repo)
+Resolves DA's "n=1 repo" concern. base = verified single-run θ₀ (119); "best arm" = per-repo max over the 4 arms.
+
+| repo | base | arms (sw/re/cf/sc) | base − best-arm |
+|---|---:|---|---:|
+| sympy | 29 | 3/8/4/2 | +21 |
+| scikit-learn | 14 | 6/5/2/5 | +8 |
+| xarray | 7 | 3/2/0/1 | +4 |
+| pytest | 6 | 4/3/3/2 | +2 |
+| astropy | 4 | 3/1/3/0 | +1 |
+| requests | 3 | 2/2/0/0 | +1 |
+| matplotlib | 3 | 2/1/0/1 | +1 |
+| pylint | 1 | 1/1/0/1 | 0 (tie) |
+| flask | 1 | 0/1/0/0 | 0 (tie) |
+| django | 51 | 53/46/36/23 | −2 (only repo an arm > base) |
+
+- **base ≥ best-of-4-arms on 9/10 repos** (only django favors an arm, by +2) — conservative for base (vs the *best* arm per repo). Capability-neutral SFT would give ~50/50, not 9/10.
+- **Aggregate forgetting mass = +38/500**, spread sympy(+21) → sklearn(+8) → xarray(+4) → pytest(+2) → … — NOT sympy-only.
+- **Present on clean, never-trained repos** (sklearn +8, pytest +2, requests +1 — in no arm's training data) ⇒ genuine capability degradation, not a contamination/training-mix artifact.
+- **Calibration:** most per-repo deltas sit within the ~15/500 single-rollout noise floor individually; the *resolvable* claims are the AGGREGATE (+38 full-500) and the DIRECTIONAL consistency (9/10). Frame as "systematic degradation across the base's domains", NOT "significant forgetting on each of N repos". This aggregate — not a general-capability gap — is the true source of the naive full-500 "+42 base≫arms". (devils-advocate analysis; folded in by main-worker)
