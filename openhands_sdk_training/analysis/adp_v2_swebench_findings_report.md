@@ -554,18 +554,5 @@ Resolves DA's "n=1 repo" concern. base = verified single-run θ₀ (119); "best 
 - **base ≥ best-of-4-arms on 9/10 repos** (only django favors an arm, by +2) — conservative for base (vs the *best* arm per repo). Capability-neutral SFT would give ~50/50, not 9/10.
 - **Aggregate forgetting mass = +38/500**, spread sympy(+21) → sklearn(+8) → xarray(+4) → pytest(+2) → … — NOT sympy-only.
 - **Present on clean, never-trained repos** (sklearn +8, pytest +2, requests +1 — in no arm's training data) ⇒ genuine capability degradation, not a contamination/training-mix artifact.
+- **All four arms forgot, not just the weakest** — base beats the *arm-UNION* on sympy (29 vs 13) and sklearn (14 vs 12): pooling every arm's solves still does not recover the base's count (a strong catastrophic-forgetting signature). sklearn is clean/non-contaminated ⇒ genuine domain capability loss, not leakage. (soup-worker analysis, merged in.)
 - **Calibration:** most per-repo deltas sit within the ~15/500 single-rollout noise floor individually; the *resolvable* claims are the AGGREGATE (+38 full-500) and the DIRECTIONAL consistency (9/10). Frame as "systematic degradation across the base's domains", NOT "significant forgetting on each of N repos". This aggregate — not a general-capability gap — is the true source of the naive full-500 "+42 base≫arms". (devils-advocate analysis; folded in by main-worker)
-
-### Forgetting is MULTI-REPO, not sympy-only (DA strengthening #1, soup-worker 2026-07-26)
-Checked base-vs-arms per repo (free, resolved_ids) to test whether the "catastrophic forgetting" claim rests on sympy alone. It does NOT — it's a pattern across ≥3 repos (base beats the BEST of all 4 arms by ≥3):
-```
-repo          tot  base  best-arm  base−best  arm-union
-sympy          75   29      8        +21         13
-scikit-learn   32   14      6         +8         12
-pydata(xarray) 22    7      3         +4          5
-(django 231: base 51 ≈ best 53, tie — the bulk is unaffected)
-```
-- **base beats the arm-UNION on sympy (29 vs 13) and sklearn (14 vs 12)** — i.e. ALL FOUR arms lost capability the base had on these domains, not just the weakest; pooling every arm's solves still doesn't recover the base's count. Strong catastrophic-forgetting signature.
-- **sklearn is a CLEAN (non-contaminated) repo** (no arm trained on it) → the forgetting is genuine domain capability loss, NOT a contamination/leakage artifact.
-- Scope: forgetting is concentrated on specialized-library repos (sympy/sklearn/xarray); the bulk (django, 46% of SBV) is a base≈arm tie. So the honest wording is "SFT erodes pre-existing capability on multiple specialized domains the base already knew, while leaving the bulk unchanged" — a pattern (≥3 repos), not an n=1 sympy anecdote.
-- Base-rate note: base = 119/500 = 23.8% ≈ **~24%** (standardized throughout).
