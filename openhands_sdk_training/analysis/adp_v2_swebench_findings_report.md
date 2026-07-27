@@ -8,9 +8,9 @@ _Maintained by the main-worker session. All numbers file-backed under
 Framing: this is about **what the experiment teaches**, not leaderboard rank._
 
 ## TL;DR
-_STATUS 2026-07-26 (VERIFIED, **PROVISIONAL pending pooled220k joint-train**). θ₀ resolved = 119/500 provenance-clean base; all 4 arms + full soup/α-sweep scored. See the "θ₀ RESOLVED" + "SFT-LIFT VERDICT" sections at the end for file-backed detail._
+_STATUS 2026-07-26 (VERIFIED, **PROVISIONAL pending pooled220k joint-train**). θ₀ resolved = 119/500 provenance-clean base; all 4 arms + full soup/α-sweep + pooled55k (46) scored (pooled220k pending). See the "θ₀ RESOLVED" + "SFT-LIFT VERDICT" sections at the end for file-backed detail._
 
-**Bottom line (one sentence):** Raw ADP first-55k SFT does **not** improve a **~24% base** (Qwen3.5-4B instruct, single-run pass@1) and **significantly degrades it across the base's domains** (base ≥ best arm on 9/10 repos; sympy 29/75 → 3/75); **no weight-merge of the arms recovers it** — every soup is significantly below base and the best arm (joint-train pooled220k **PENDING**, honest prior ≤ base). The apparent "5%→15% SFT lift" was mostly a **harness artifact (H2)**: the *same* Qwen3.5-4B-*Base* weights score **≥10.6% (~16% ex-sphinx) under this campaign's harness** vs 5.0% on Graham's pre-fix June harness (non-empty-patch rate ~70% vs 19%), so ~5% reflects patch-production, not model capability. A base-vs-instruct mix-up (arms are *instruct*-init, θ₀=119≈24%; H1) is a real but *non-causal* secondary defect.
+**Bottom line (one sentence):** Raw ADP first-55k SFT does **not** improve a **~24% base** (Qwen3.5-4B instruct, single-run pass@1) and **significantly degrades it across the base's domains** (base ≥ best arm on 9/10 repos; sympy 29/75 → 3/75); **no weight-merge of the arms recovers it** — every soup is significantly below base and the best arm (joint-train too: compute-matched **pooled55k = 46** is sig below base −73 p<1e-4; data-matched **pooled220k PENDING**, prior ≤ base). The apparent "5%→15% SFT lift" was mostly a **harness artifact (H2)**: the *same* Qwen3.5-4B-*Base* weights score **≥10.6% (~16% ex-sphinx) under this campaign's harness** vs 5.0% on Graham's pre-fix June harness (non-empty-patch rate ~70% vs 19%), so ~5% reflects patch-production, not model capability. A base-vs-instruct mix-up (arms are *instruct*-init, θ₀=119≈24%; H1) is a real but *non-causal* secondary defect.
 
 **Three findings, kept separate (per-board, so they don't blur):**
 1. **No significant general lift** — clean-301 (fair general board): base 76 vs best arm (swezero) 66 = **+10, McNemar p=0.30, n.s.**; django (clean, 231) 51≈53 tie. ("No significant lift," NOT equivalence, NOT "base wins.")
@@ -508,12 +508,15 @@ uniform4 (α=1.0)        50
 α=1.55                  38
 α=2.0                   19     collapse
    arms: coderforge 48, scale 35 interleave the weak soups
+─ joint-train (agent-b) ─
+pooled55k  (55k, compute-matched)   46   sig < base (−73, p<1e-4) & < best arm (−31, p=4e-4)
+pooled220k (220k, data-matched)     PENDING   ← the last combine result
 ```
 - **Every soup is SIGNIFICANTLY below base (all p<1e-4) AND below the best arm** (top2 vs swezero −19 clean-301 p=0.014; a0p7 vs swezero −23/456 p=0.0095). uniform4 vs swezero −27/456 p=0.0016.
 - **α-sweep is MONOTONE DECREASING** (α0.7=54 → 1.0=50 → 1.55=38 → 2.0=19): capability *decreases* with ‖soup-τ‖. ⇒ the merge deficit is **RESIDUAL-DROP, not a norm deficit** — averaging keeps only the shared direction s (0.646× arm norm) and discards the ~76% residual where arm-specific capability lives; rescaling s can't recover it and overshoot (α>1) adds incoherence. Hole-1 resolved.
 - Dropping the weak/wrong-direction arms (top-2, and scale has the largest ‖τ‖ but worst score) helps most among soups (+12 vs uniform4) but does NOT rescue merging.
 
-**NET CAMPAIGN VERDICT (soup + base sides):** on SWE-bench Verified, ADP-v2 SFT on this raw data gives **no general lift over the base instruct model** and **systematically degrades the base across its domains (base ≥ best arm on 9/10 repos; concentrated in sympy/sklearn)**; **weight-merging the arms is strictly a loss** (every soup significantly below base and best arm, via residual-drop). The only combine method not yet scored is **pooled220k (joint-train)** — the last candidate that could beat base. Real remaining research question (per devils-advocate): does **quality-filtered** data lift over the measured ~24% base? (Data curation, not post-hoc merging.)
+**NET CAMPAIGN VERDICT (soup + base sides):** on SWE-bench Verified, ADP-v2 SFT on this raw data gives **no general lift over the base instruct model** and **systematically degrades the base across its domains (base ≥ best arm on 9/10 repos; concentrated in sympy/sklearn)**; **weight-merging the arms is strictly a loss** (every soup significantly below base and best arm, via residual-drop). **pooled55k (joint-train, compute-matched 55k) = 46/500 — significantly below base (−73/456, p<1e-4; clean-301 −39, p<1e-4) and below the best arm (−31, p=4e-4)**, in the weak cluster ⇒ even joint-train at 1-arm budget does not beat base. The only combine method not yet scored is **pooled220k (data-matched, 4× joint-train)** — the last candidate that could beat base (if it too lands ≤119, the blanket “no combine method beats base” is confirmed). Real remaining research question (per devils-advocate): does **quality-filtered** data lift over the measured ~24% base? (Data curation, not post-hoc merging.)
 
 ### ★★ θ₀ "~5%" ANCHOR PROVENANCE — RESOLVED (2026-07-26, Babel-side agent) — H2 (HARNESS) CAUSAL, H1 NON-CAUSAL
 The Babel-side investigation (findings on branch `babel-provenance-findings`) resolves the "~5%" anchor:
