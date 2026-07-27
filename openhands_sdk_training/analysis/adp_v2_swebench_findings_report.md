@@ -10,7 +10,7 @@ Framing: this is about **what the experiment teaches**, not leaderboard rank._
 ## TL;DR
 _STATUS 2026-07-26 (VERIFIED, **PROVISIONAL pending pooled220k joint-train**). θ₀ resolved = 119/500 provenance-clean base; all 4 arms + full soup/α-sweep scored. See the "θ₀ RESOLVED" + "SFT-LIFT VERDICT" sections at the end for file-backed detail._
 
-**Bottom line (one sentence):** Raw ADP first-55k SFT does **not** improve a **~24% base** (Qwen3.5-4B instruct, single-run pass@1) and **significantly degrades it across the base's domains** (base ≥ best arm on 9/10 repos; sympy 29/75 → 3/75); **no weight-merge of the arms recovers it** — every soup is significantly below base and the best arm (joint-train pooled220k **PENDING**, honest prior ≤ base). The apparent "5%→15% SFT lift" was a **wrong-checkpoint-class baseline artifact**: the "~5%" was a *real* measurement — of Qwen3.5-4B-*Base*, not the *instruct* θ₀ (=119 ≈24%) the arms init from (~5× off).
+**Bottom line (one sentence):** Raw ADP first-55k SFT does **not** improve a **~24% base** (Qwen3.5-4B instruct, single-run pass@1) and **significantly degrades it across the base's domains** (base ≥ best arm on 9/10 repos; sympy 29/75 → 3/75); **no weight-merge of the arms recovers it** — every soup is significantly below base and the best arm (joint-train pooled220k **PENDING**, honest prior ≤ base). The apparent "5%→15% SFT lift" was mostly a **harness artifact (H2)**: the *same* Qwen3.5-4B-*Base* weights score **≥10.6% (~16% ex-sphinx) under this campaign's harness** vs 5.0% on Graham's pre-fix June harness (non-empty-patch rate ~70% vs 19%), so ~5% reflects patch-production, not model capability. A base-vs-instruct mix-up (arms are *instruct*-init, θ₀=119≈24%; H1) is a real but *non-causal* secondary defect.
 
 **Three findings, kept separate (per-board, so they don't blur):**
 1. **No significant general lift** — clean-301 (fair general board): base 76 vs best arm (swezero) 66 = **+10, McNemar p=0.30, n.s.**; django (clean, 231) 51≈53 tie. ("No significant lift," NOT equivalence, NOT "base wins.")
@@ -19,7 +19,7 @@ _STATUS 2026-07-26 (VERIFIED, **PROVISIONAL pending pooled220k joint-train**). �
 
 **Data defects = candidate LEVERS, not a proven cause (devils-advocate):** agent-b's data findings (~40% non-solve/condensation records, no quality filter, arm-asymmetric 28k truncation) are *candidate* curation levers with **untested** effect — the 40%-condensation sign is two-sided (dilution to cut, OR a real context-mgmt skill SBV doesn't score). The real remaining research question = does **quality-filtered** data lift over the measured ~24% base? (Data curation, not post-hoc merging.)
 
-**Methods lesson (transferable):** a baseline must be the *exact init checkpoint*. The "~5%" was a *real* measurement — but of the **base** model, while the arms init from **instruct** (θ₀=119 ≈24%), so the "5%→15% lift" silently compared across model classes. The failure was a *wrong-checkpoint-class* baseline (not merely an *unmeasured* one); always eval θ₀ = the arms' actual init under the identical harness. (Provenance RESOLVED 2026-07-26: the "~5%" was Qwen3.5-4B-*Base* (non-instruct) per Graham's Babel RESULTS.md line 22 — a base-vs-instruct mismatch, H1 confirmed; see "ANCHOR PROVENANCE — RESOLVED" section below.)
+**Methods lesson (transferable):** measure the baseline **under the identical harness** and as the **exact init checkpoint**. The "~5%" conflated two problems, the bigger being the harness: the *same* base weights score ≥10.6% (~16% ex-sphinx) under this campaign's harness vs 5.0% on Graham's pre-fix harness (~70% vs 19% non-empty patches) ⇒ mostly a *patch-production/harness* artifact (H2), not capability. The wrong-checkpoint-class baseline (instruct-init arms vs a base anchor; H1) is real but *non-causal*. (Provenance RESOLVED 2026-07-26 by the Babel-side agent — see "ANCHOR PROVENANCE — RESOLVED" below.)
 
 - **HEADLINE RETRACTED (2026-07-25, see H3-FALSIFIED below): the "SFT lift" was measured against an UNMEASURED baseline.** "θ₀ ≈5%" was a borrowed sanity-anchor (25/500, cross-campaign/Babel ref) NEVER run for this θ₀; "+50/500 hugely significant" was an arithmetic gap to that placeholder, NOT a paired McNemar (no measured θ₀ resolved-set existed). MEASURED single-run θ₀ = 119/500 (~24%, provenance-verified 2026-07-26 — see "θ₀ RESOLVED" section below) => SFT-lift is NULL-to-NEGATIVE: no arm significantly beats base (clean-301 +10, p=0.30 n.s.); coderforge/scale significantly BELOW base — the one
   effect comfortably resolvable at n=500 ("the paper sentence"; θ₀ denominator now fixed = 119/500 verified).
@@ -515,25 +515,27 @@ uniform4 (α=1.0)        50
 
 **NET CAMPAIGN VERDICT (soup + base sides):** on SWE-bench Verified, ADP-v2 SFT on this raw data gives **no general lift over the base instruct model** and **systematically degrades the base across its domains (base ≥ best arm on 9/10 repos; concentrated in sympy/sklearn)**; **weight-merging the arms is strictly a loss** (every soup significantly below base and best arm, via residual-drop). The only combine method not yet scored is **pooled220k (joint-train)** — the last candidate that could beat base. Real remaining research question (per devils-advocate): does **quality-filtered** data lift over the measured ~24% base? (Data curation, not post-hoc merging.)
 
-### ★★ θ₀ "~5%" ANCHOR PROVENANCE — RESOLVED (2026-07-26, via Babel swe-bench-babel-evals/RESULTS.md) — H1 CONFIRMED
-The long-suspect "~5% base" anchor is now sourced to a file-backed Babel eval. RESULTS.md (Graham's base-init
-campaign) line 22 records **Graham measured Qwen3.5-4B-*Base* (raw, NON-instruct) = 25/500 (5.0%)** on his infra.
-⇒ the ~5% was the **base (non-instruct) model**, NOT the instruct model the FAIR arms were fine-tuned from
-(θ₀ = Qwen3.5-4B *instruct* = 119/500 ≈ 24%). So the campaign's "SFT lift 5%→15%" pitted instruct-init arms
-against a **base-model** baseline — a base-vs-instruct MISMATCH, not a fabrication. **Confirms hypothesis H1 of
-the provenance brief.**
-- The companion "paper-nonweb ≈ 52/500 (10.4%)" is ALSO real and base-init: RESULTS.md line 23 = papernonweb1154
-  (Base + ADP-paper openhands_nonweb ~40k) = 52/500.
-- RESULTS.md is a BASE-init campaign and correctly finds SFT beats raw *base* 2–3× (5%→10–15%, "data quality
-  first, then init, each stacking"). This does NOT contradict FAIR's instruct-init null: raw base 5% →SFT→
-  ~10–15%; raw instruct 24% →SFT→ ≤24%. Both internally correct; only cross-applying the base anchor to
-  instruct-init arms was the error.
-- CORROBORATION (cross-infra, cross-data): RESULTS.md swesmithinstruct540 (instruct-init + SWE-smith) is partial
-  at ~21%, sitting at/below the ~24% instruct base — independently agrees with FAIR's "instruct-init SFT does not
-  beat the instruct base."
-- OPEN (Babel agent, in progress): did rawinstruct4b (raw *instruct* baseline) ever complete on Babel? A finished
-  number is the cleanest cross-infra check of FAIR's θ₀ = 119/500 (~24%). (main-worker, from RESULTS.md)
-
+### ★★ θ₀ "~5%" ANCHOR PROVENANCE — RESOLVED (2026-07-26, Babel-side agent) — H2 (HARNESS) CAUSAL, H1 NON-CAUSAL
+The Babel-side investigation (findings on branch `babel-provenance-findings`) resolves the "~5%" anchor:
+**it is a HARNESS artifact (hypothesis H2), not the base-vs-instruct mismatch (H1) earlier suspected.**
+- The 25/500 (5.0%) was Graham's June-2026 eval of **Qwen3.5-4B-*Base***. But the **same base weights**,
+  re-scored in-house under **this campaign's harness** (`base4b` / `score_base4b254`, provenance-verified from
+  shard metadata `custom_tokenizer=Qwen/Qwen3.5-4B-Base`), score **53/362 scored ⇒ ≥10.6% of 500 (hard floor),
+  ~16% ex-sphinx** — ~2–3× the 5%. The gap is **patch production, not capability**: non-empty-patch rate 69.6%
+  (this harness) vs 19.2% (Graham's) on identical weights; Graham emitted empty patches 81% of the time. Leading
+  mechanism (hypothesis): the `cp_testbed_repo` 30s→600s timeout fix that Graham's run predates.
+- **H1 is *nominally* true but *non-causal*:** the anchor really is the base (non-instruct) model and the arms
+  are instruct-init (a real but secondary methodological defect), yet base-vs-instruct cannot explain 5%→~24%
+  because the base itself clears ≥10.6% under the right harness.
+- **H3/H4 false.** "paper-nonweb ≈ 52/500 (10.4%)" is a real in-house **Base-init** SFT-checkpoint eval
+  (`papernonweb1154`), not the ADP paper's number.
+- **No valid Babel instruct anchor:** `rawinstruct4b` died at 13/47 scored (survivorship-biased) ⇒ the FAIR
+  rerun's θ₀ = 119/500 (~24% instruct) is the only trustworthy untrained-instruct baseline. (Bonus:
+  `swesmithinstruct540` has a *final* 82/500 = 16.4% on disk vs the stale RESULTS.md partial "20/96".)
+- **Verdict UNCHANGED:** the SFT-lift still inverts (arms 77/70/48/35 vs θ₀ ≥53, plausibly ~73; two arms below
+  base). Only the *explanation* of the anchor changed — harness (+ a base/instruct mix-up); every figure was a
+  real measurement of *something*, just never mutually comparable. (main-worker, folding in the Babel-side
+  agent's findings; supersedes the earlier "H1 confirmed" reading.)
 
 ### ★ MULTI-REPO FORGETTING — systematic, not sympy-only (2026-07-27, devils-advocate; base = init_singlerun vs arms resolved_ids, per repo)
 Resolves DA's "n=1 repo" concern. base = verified single-run θ₀ (119); "best arm" = per-repo max over the 4 arms.
