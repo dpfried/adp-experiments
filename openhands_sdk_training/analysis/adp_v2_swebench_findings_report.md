@@ -532,9 +532,7 @@ The Babel-side investigation (findings on branch `babel-provenance-findings`) re
 - **No valid Babel instruct anchor:** `rawinstruct4b` died at 13/47 scored (survivorship-biased) ⇒ the FAIR
   rerun's θ₀ = 119/500 (~24% instruct) is the only trustworthy untrained-instruct baseline. (Bonus:
   `swesmithinstruct540` has a *final* 82/500 = 16.4% on disk vs the stale RESULTS.md partial "20/96".)
-- **Verdict UNCHANGED:** the SFT-lift still inverts (arms 77/70/48/35 vs θ₀ ≥53, plausibly ~73; two arms below
-  base). Only the *explanation* of the anchor changed — harness (+ a base/instruct mix-up); every figure was a
-  real measurement of *something*, just never mutually comparable. (main-worker, folding in the Babel-side
+- **Verdict UNCHANGED (anchor = instruct θ₀ = 119):** the SFT-lift still **inverts** against the arms' *actual* init — **instruct θ₀ = 119/500** — with all four arms (77/70/48/35) far below (best-arm −42). ⚠️ Keep THREE models distinct; do NOT conflate them: **(1)** Graham's Qwen3.5-4B-*Base* + broken harness = 5% (empty-patch artifact — explains the bad anchor, not a capability number); **(2)** Qwen3.5-4B-*Base* (non-instruct) under THIS harness ≈ 73/500 — a real RAW-BASE number, relevant ONLY to explaining Graham's 5% (same base weights, better harness), **NOT θ₀**; **(3)** instruct θ₀ = 119 (851bf6e8) = the arms' init and the SOLE verdict anchor. The ≈73 base figure must not re-anchor the SFT-lift (arms 77 vs base ≈73 would be a mild *lift*, not an inversion — wrong model class; that conflation is exactly the base-vs-instruct slip this section warns against). (main-worker, folding in the Babel-side
   agent's findings; supersedes the earlier "H1 confirmed" reading.)
 
 ### ★ MULTI-REPO FORGETTING — systematic, not sympy-only (2026-07-27, devils-advocate; base = init_singlerun vs arms resolved_ids, per repo)
@@ -557,3 +555,17 @@ Resolves DA's "n=1 repo" concern. base = verified single-run θ₀ (119); "best 
 - **Aggregate forgetting mass = +38/500**, spread sympy(+21) → sklearn(+8) → xarray(+4) → pytest(+2) → … — NOT sympy-only.
 - **Present on clean, never-trained repos** (sklearn +8, pytest +2, requests +1 — in no arm's training data) ⇒ genuine capability degradation, not a contamination/training-mix artifact.
 - **Calibration:** most per-repo deltas sit within the ~15/500 single-rollout noise floor individually; the *resolvable* claims are the AGGREGATE (+38 full-500) and the DIRECTIONAL consistency (9/10). Frame as "systematic degradation across the base's domains", NOT "significant forgetting on each of N repos". This aggregate — not a general-capability gap — is the true source of the naive full-500 "+42 base≫arms". (devils-advocate analysis; folded in by main-worker)
+
+### Forgetting is MULTI-REPO, not sympy-only (DA strengthening #1, soup-worker 2026-07-26)
+Checked base-vs-arms per repo (free, resolved_ids) to test whether the "catastrophic forgetting" claim rests on sympy alone. It does NOT — it's a pattern across ≥3 repos (base beats the BEST of all 4 arms by ≥3):
+```
+repo          tot  base  best-arm  base−best  arm-union
+sympy          75   29      8        +21         13
+scikit-learn   32   14      6         +8         12
+pydata(xarray) 22    7      3         +4          5
+(django 231: base 51 ≈ best 53, tie — the bulk is unaffected)
+```
+- **base beats the arm-UNION on sympy (29 vs 13) and sklearn (14 vs 12)** — i.e. ALL FOUR arms lost capability the base had on these domains, not just the weakest; pooling every arm's solves still doesn't recover the base's count. Strong catastrophic-forgetting signature.
+- **sklearn is a CLEAN (non-contaminated) repo** (no arm trained on it) → the forgetting is genuine domain capability loss, NOT a contamination/leakage artifact.
+- Scope: forgetting is concentrated on specialized-library repos (sympy/sklearn/xarray); the bulk (django, 46% of SBV) is a base≈arm tie. So the honest wording is "SFT erodes pre-existing capability on multiple specialized domains the base already knew, while leaving the bulk unchanged" — a pattern (≥3 repos), not an n=1 sympy anecdote.
+- Base-rate note: base = 119/500 = 23.8% ≈ **~24%** (standardized throughout).
