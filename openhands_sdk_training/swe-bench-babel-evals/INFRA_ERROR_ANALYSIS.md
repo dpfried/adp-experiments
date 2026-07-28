@@ -197,6 +197,33 @@ effect the ablation exists to measure.
 Note that the existing `score_*` directories are now stale for every re-run arm; they will need
 re-scoring via `run_score_shards.sbatch` once inference lands.
 
+## 5b. Progress and a second failure mode (2026-07-27)
+
+Four arms have landed clean at 500/500 with `output.jsonl` aggregated:
+**v2swezero1719, swesmith540, swesmithinstruct540, papernonweb1154.** v2coderforge1719 is at
+499/500 and still running; base4b and rawinstruct4b are in progress.
+
+A separate, unrelated failure surfaced during the re-run: **vLLM intermittently hangs at TP2
+startup**, immediately after `vLLM is using nccl==2.28.9`, and never serves — despite
+`NCCL_NVLS_ENABLE=0` already being set. Healthy startup is 5–8 minutes, so the 30-minute health
+wait expiring means the server is wedged, not slow. It hit four job launches (9508102, 9508103,
+9508104, 9508106) across three different nodes, so it is flaky rather than node-specific. The
+chained-pair design absorbed it for rebench and rawinstruct, but **v2scale1719 drew it on both
+legs and died without running a single instance**.
+
+Two fixes to the sbatch:
+
+1. **In-job vLLM startup retry** (`VLLM_TRIES=3`, 15-minute health window each) instead of
+   forfeiting an entire 2-day allocation to a wedged server.
+2. **Merged the EXIT traps.** The vLLM-kill trap was silently *replacing* the workspace-cleanup
+   trap — bash allows one EXIT handler, and the second `trap ... EXIT` overwrites the first — so
+   the `/scratch` workspace cleanup that the ENOSPC fix introduced had never actually run. Both
+   now live in a single `cleanup()`.
+
+Slurm snapshots the batch script at submit time, so these apply to submissions after 2026-07-27
+only. v2scale1719 was resubmitted (9562263/4) with the hardened script and the two nodes it hung
+on excluded.
+
 ## 6. What to watch
 
 - **Re-check the error rate per arm when these land.** The purge fixes the *recorded* bias; it

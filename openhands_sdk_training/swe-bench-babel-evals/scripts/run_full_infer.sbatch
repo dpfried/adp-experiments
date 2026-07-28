@@ -67,16 +67,44 @@ VLLM_ARGS=(--model "$MODEL" --served-model-name "adp-eval-$TAG"
 [ -n "$CHAT_TEMPLATE" ] && VLLM_ARGS+=(--chat-template "$CHAT_TEMPLATE")
 [ "$CACHE" = "on" ] && VLLM_ARGS+=(--enable-prefix-caching --mamba-cache-mode align)
 echo "== prefix cache: $CACHE =="
-nohup "$SB/.venv_vllm/bin/python" -m vllm.entrypoints.openai.api_server "${VLLM_ARGS[@]}" \
-  > "$SB/logs/vllm_full_${TAG}_$SLURM_JOB_ID.log" 2>&1 &
-VLLM_PID=$!
-trap 'kill $VLLM_PID 2>/dev/null || true' EXIT
-for i in $(seq 1 180); do   # 30 min: JIT + tir1-NFS model load can be slow on a cold node
-  curl -sf http://127.0.0.1:$PORT/health >/dev/null && break
-  kill -0 $VLLM_PID 2>/dev/null || { echo "FATAL: vLLM died during startup"; tail -30 "$SB/logs/vllm_full_${TAG}_$SLURM_JOB_ID.log"; exit 1; }
-  sleep 10
+VLLM_LOG="$SB/logs/vllm_full_${TAG}_$SLURM_JOB_ID.log"
+VLLM_PID=""
+# ONE EXIT trap only -- bash replaces rather than appends, so the workspace-cleanup
+# trap set above and the vLLM kill must live in the same handler. (They didn't until
+# 07-27; the second trap silently clobbered the first and /scratch workspaces leaked.)
+cleanup() {
+  [ -n "$VLLM_PID" ] && { pkill -P "$VLLM_PID" 2>/dev/null; kill "$VLLM_PID" 2>/dev/null; }
+  rm -rf "$OPENHANDS_APPTAINER_WORKSPACE_ROOT" "$APPTAINER_TMPDIR"
+}
+trap cleanup EXIT
+
+# vLLM startup is flaky at TP2: it intermittently hangs immediately after
+# `vLLM is using nccl==2.28.9` and never serves, despite NCCL_NVLS_ENABLE=0.
+# Healthy startup is 5-8 min, so a 30 min wait means it is wedged, not slow.
+# On 07-26/27 this burned 4 job launches (9508102, 9508103, 9508104, 9508106)
+# and killed the v2scale1719 arm outright when both chained legs hit it.
+# Retry in-job instead of forfeiting a whole 2-day allocation to it.
+VLLM_TRIES=${VLLM_TRIES:-3}
+HEALTH_POLLS=${HEALTH_POLLS:-90}   # 90 x 10s = 15 min; well past the 5-8 min norm
+for try in $(seq 1 $VLLM_TRIES); do
+  echo "== vLLM start attempt $try/$VLLM_TRIES $(date -Is) =="
+  nohup "$SB/.venv_vllm/bin/python" -m vllm.entrypoints.openai.api_server "${VLLM_ARGS[@]}" \
+    >> "$VLLM_LOG" 2>&1 &
+  VLLM_PID=$!
+  healthy=0
+  for i in $(seq 1 $HEALTH_POLLS); do
+    if curl -sf http://127.0.0.1:$PORT/health >/dev/null; then healthy=1; break; fi
+    kill -0 $VLLM_PID 2>/dev/null || { echo "vLLM process died during startup (attempt $try)"; break; }
+    sleep 10
+  done
+  [ "$healthy" = "1" ] && break
+  echo "== vLLM unhealthy on attempt $try; tearing down and retrying =="
+  tail -15 "$VLLM_LOG"
+  pkill -P "$VLLM_PID" 2>/dev/null; kill -9 "$VLLM_PID" 2>/dev/null
+  VLLM_PID=""
+  sleep 45   # let the GPUs actually release before the next attempt
 done
-curl -sf http://127.0.0.1:$PORT/health >/dev/null || { echo "FATAL: vLLM never became healthy"; exit 1; }
+curl -sf http://127.0.0.1:$PORT/health >/dev/null || { echo "FATAL: vLLM never became healthy after $VLLM_TRIES attempts"; exit 1; }
 echo "== vLLM healthy =="
 
 # --- phase 2: llm config ---
