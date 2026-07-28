@@ -563,10 +563,37 @@ Resolves DA's "n=1 repo" concern. base = verified single-run θ₀ (119); "best 
 
 ### ★★ ROOT CAUSE of the universal SFT regression — DATA CONTENT/OBJECTIVE, not a pipeline bug (2026-07-27, agent-b, file-backed / 2 SSH investigations)
 **Refuted (NOT the cause):** format / template / pipeline. chat_template byte-identical base↔arm; training XML matches the qwen3_coder parser; serving identical; loss-masking / LR / cutoff all sane.
-**The cause is data content + training objective.** On all 82 base-solved / swezero-failed instances the arm emits **82/82 VALID, well-formed patches that MISDIAGNOSE the bug** — 0 empty, 0 malformed, 0 early-termination. The arms are MORE scaffold-compliant than base, not broken:
+**OBSERVED (file-backed WHAT).** On all 82 base-solved / swezero-failed instances the arm emits **82/82 VALID, well-formed patches that MISDIAGNOSE the bug** — 0 empty, 0 malformed, 0 early-termination. The arms are MORE scaffold-compliant than base, not broken:
 - swezero finishes 500/500 (base 207/500), 0 empty patches (base 138/500), ~half the actions (92 vs 171).
 - Real-but-different policy: swezero newly solves 40 instances base misses but loses 82 → net −42.
-- ⇒ SFT taught a **tidy / confident / shallow** policy: minimal symptom-level edit + confident “fixed it” summary + finish early, vs base's messier deep root-causing.
-**Mechanism (data audit):** (1) ~40% of records are condensation/summary → train summarize-and-conclude over acting; (2) NO success filtering (no outcome label exists) → imitates unresolved/looping trajectories; (3) trajectory segments — only ~39% end at a real finish.
-**Corrections to prior framing:** “arm-asymmetric truncation” REFUTED (0% truncated at cutoff 32768, all arms); each single arm trained on 55k (not 80k) ⇒ single arms + pooled55k are equal-compute (not a confound).
-**Decisive next experiment (proposed, not yet run):** one arm on outcome-verified + condensation-excluded 55k vs a matched mixed-55k → prediction: recovery to/above base 119. This is the controlled test of the data-curation lever. (agent-b; details in memory adp-v2-data-composition.)
+- ⇒ SFT shifted the policy from base's **deep-but-messy** root-causing to a **tidy / confident / shallow** one: minimal symptom-level edit + confident "fixed it" summary + finish early.
+**The verdict is METRIC-SPECIFIC — NOT "SFT degrades capability" flat.** On SBV **pass@1**, SFT **traded DEPTH for COMPLIANCE**, and this metric rewards depth (base's 119 itself comes WITH low compliance — 138 empty patches, finishes only 207/500). The compliance gain is a real learned behavior (always-finish, always-patch, tidy summaries) that could be an ASSET under a different objective — pass@k, an RL warm-start, or a valid-patch-rate metric. SBV pass@1 is a proxy, so the honest statement is "net-negative on SBV pass@1," NOT "net-negative on capability."
+**Candidate mechanism (WHY — correlational; a hypothesis until the ablation runs):** (1) ~40% of records are condensation/summary → plausibly train summarize-and-conclude over acting (this ~40% is two-sided — either a real context-management skill SBV pass@1 doesn't score, or net dilution; this data reads as net-harmful here, but the sign was long open); (2) NO success filtering (no outcome label exists) → imitates unresolved/looping trajectories; (3) trajectory segments — only ~39% end at a real finish.
+**Corrections to prior framing:** "arm-asymmetric truncation" REFUTED (0% truncated at cutoff 32768, all arms); each single arm trained on 55k (not 80k) ⇒ single arms + pooled55k are equal-compute (not a confound).
+**Decisive next experiment (proposed, not yet run):** one arm on outcome-verified + condensation-excluded 55k vs a matched mixed-55k. It TESTS WHETHER — and how much — curation recovers depth; recovery to/above base 119 is the hypothesis, not a foregone outcome (partial recovery <119 would still be informative: curation helps but doesn't fully close the gap). This is the controlled test of the data-curation lever, and it is what would promote the mechanism above from correlational to causal. (agent-b; details in memory adp-v2-data-composition.)
+
+### ★ CROSS-CAMPAIGN COMPARISON — ADP-v2 (this report) vs the Babel base-init campaign (swe-bench-babel-evals/RESULTS.md) (2026-07-27)
+Two campaigns, complementary halves. **RESULTS.md** = Babel, Graham's L40S protocol, mostly **base-init**; **this report** = FAIR A100, **instruct-init**. All numbers SWE-bench Verified 500, temp-0 single greedy.
+
+| Campaign | model / arm | init | data | resolved/500 |
+|---|---|---|---|---:|
+| Babel | base4b | base | — | 25 (Graham/broken harness) → ~53/362 (**≥10.6%**) fixed harness |
+| Babel | papernonweb1154 | base | ADP-paper openhands_nonweb ~40k | **52 (10.4%)** |
+| Babel | swesmith540 | base | SWE-smith condenser | **74 (15.1%)** |
+| Babel | swesmithinstruct540 | instruct | SWE-smith condenser | **82 (16.4%)** (final; RESULTS.md still shows stale 20/96 partial) |
+| Babel | rawinstruct4b | instruct | — | never validly measured (13/47) |
+| **ours** | θ₀ base | instruct | — | **119 (23.8%)** |
+| **ours** | swezero / rebench / coderforge / scale | instruct | ADP-v2 SWE (55k ea) | **77 / 70 / 48 / 35** |
+| **ours** | pooled55k / best soup (top-2) | instruct | — | 46 / 62 |
+
+**Comparability caveats — do NOT over-read absolute cross-campaign deltas:**
+1. **Harness (dominant):** the same base model scores 5% (Graham) vs ≥10.6–16% (campaign harness) — harness swings scores ~2–3× (see ANCHOR PROVENANCE / H2). Babel = L40S / Graham-protocol; ours = FAIR A100. Only WITHIN-campaign (arm vs its own base) comparisons are clean.
+2. **Init:** Babel's headline arms (papernonweb, swesmith540) are base-init; ours are instruct-init.
+3. **Data:** different sources (ADP-paper / SWE-smith vs ADP-v2 SWE).
+
+**What IS comparable + the synthesis:**
+- **Raw-score band:** our arms (35–77) overlap the Babel SFT arms (52–74); our best (swezero 77) ≈ SWE-smith (74 base / 82 instruct). SWE-Zero/SWE-smith top the data-quality ranking in both; ADP paper-nonweb (52) is mid — below our top-2 arms (77/70), above our bottom-2 (48/35).
+- **Direction differs by init (the two campaigns are complementary halves):** RESULTS.md is a base-init *ladder* where SFT LIFTS a weak raw base (≈5–16% → 52–74; "data quality first, then init, each stacking"). This report adds the rung RESULTS.md never measured (rawinstruct4b failed): the **instruct base itself = 119**, which sits ABOVE every SFT arm in *both* campaigns.
+- **Suggestive (cross-harness ⇒ NOT proven) — a ~74–82 "SFT attractor":** SFT arms cluster ~74–82 regardless of init — the weak base RISES to it (base-init), the strong instruct model FALLS to it (instruct 119 → 77; cf. soup-worker's "dragged-down" aside). ⇒ Babel's own best instruct-init arm (swesmithinstruct540 = 82) is *likely also* a regression vs a ~119-class instruct base it never measured. Flagged suggestive because it crosses harnesses (Babel L40S vs FAIR A100) — would need a matched-harness instruct baseline on the Babel side to confirm.
+
+**Bottom line:** ADP-v2 arms are competitive in raw score with the Babel SFT arms, and the data-quality ranking agrees (SWE-Zero/SWE-smith > paper-nonweb). The decisive difference is that this campaign MEASURED the instruct baseline (119) and it beats all SFT arms in both campaigns — recasting RESULTS.md's "2–3× SFT lift" as a *base-init* phenomenon that does not survive an instruct init. (main-worker, from RESULTS.md + this report.)
