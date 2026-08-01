@@ -1,10 +1,16 @@
 # ADP 4B training + SWE-bench Verified eval campaign (Babel)
 
-Status as of **2026-07-13 late**. Follow-up to Graham's experiments
-(`../EXPERIMENT_SUMMARY.md`), which found his condenser-data fine-tune *regressed*
-vs raw base (14 vs 25 resolved / 500, with the caveat of a ~38%-of-epoch checkpoint).
-This campaign trains Qwen3.5-4B to completion on different data recipes and evaluates
-all arms under Graham's exact protocol for comparability.
+Status as of **2026-07-27** — all five arms have final numbers (scoring snapshot
+2026-07-15). Follow-up to Graham's experiments (`../EXPERIMENT_SUMMARY.md`), which found
+his condenser-data fine-tune *regressed* vs raw base (14 vs 25 resolved / 500, with the
+caveat of a ~38%-of-epoch checkpoint). This campaign trains Qwen3.5-4B to completion on
+different data recipes and evaluates all arms under Graham's exact protocol for
+comparability.
+
+⚠️ **Read ["The 25/500 baseline anchor"](#the-25500-baseline-anchor-why-it-is-not-usable)
+below before quoting any lift over base.** An earlier version of this file concluded the
+fine-tunes "beat base by 2–3×" against Graham's 25/500 anchor. That anchor turns out not
+to be comparable to anything measured here, and the conclusion is retracted.
 
 ## Protocol (identical across arms, = Graham's)
 
@@ -17,40 +23,116 @@ in-training eval every 50 steps. Scripts in `scripts/`, configs in `configs/`.
 
 ## Results (SWE-bench Verified, 500 instances, temp 0, single greedy run)
 
-> [!WARNING]
-> **Every row below is affected by infra-error bias, and all arms are being re-run** (2026-07-26).
-> The harness counts an errored instance as *completed*, so resubmits never retried failures — and
-> the error rate varied wildly by arm (0% to 86%), almost all traceable to the tir1 NFS brownout of
-> 2026-07-16/17 plus a since-fixed `git rev-parse` bug. This makes the "Resolved / 500" column
-> non-comparable across arms. See [`INFRA_ERROR_ANALYSIS.md`](INFRA_ERROR_ANALYSIS.md).
+Resolved counts are **deduplicated by instance** — `merged.report.json` over-counts
+duplicate shard rows (it reports 515 for papernonweb's 500). Reproduce with the snippet at
+the bottom of this section. Denominators differ by arm: SWE-bench resume permanently skips
+instances that errored (`get_completed_instances` marks an instance done regardless of
+success), so an arm's *scored* board is the subset that ran cleanly, and "% of 500" charges
+every unscored instance as unresolved. Full per-arm error-rate breakdown: [`INFRA_ERROR_ANALYSIS.md`](INFRA_ERROR_ANALYSIS.md).
 
-| Arm | Init | Training data | Resolved /500 | Errored | Conditional rate | Status |
-|---|---|---|---:|---:|---:|---|
-| base4b | Qwen3.5-4B-Base (raw) | — | 53 | **279 (56%)** | — | ⚠️ invalid, re-running |
-| rawinstruct4b | Qwen3.5-4B (instruct, raw) | — | 13 | **431 (86%)** | — | ⚠️ **unmeasured**, re-running |
-| papernonweb1154 | Base | ADP-paper openhands_nonweb (~40k) | 52 (10.4%) | 16 (3%) | 52/484 = 10.7% | re-running 16 |
-| swesmith540 | Base | SWE-smith condenser SFT | 74 (14.8%) | 9 (2%) | 74/491 = 15.1% | re-running 8 |
-| swesmithinstruct540 | **Instruct** | SWE-smith condenser SFT (same) | 82 (16.4%) | **61 (12%)** | 82/439 = 18.7% | re-running 61 |
+| Arm | Init | Training data | Resolved / scored | % of 500 | Notes |
+|---|---|---|---:|---:|---|
+| base4b | Qwen3.5-4B-Base (raw) | — | **53 / 362** | **≥10.6%** | 138 never scored → the % is a hard floor; 14.6% *of scored* is biased up. 69.6% non-empty patches. **Not** Graham's 25/500 — see below |
+| papernonweb1154 | Base | ADP-paper openhands_nonweb (~40k) | **52 / 500** | **10.4%** | complete board; 69% non-empty patches; train_loss 0.247, eval_loss 0.281 |
+| swesmith540 | Base | SWE-smith condenser SFT | **74 / 492** | **14.8%** | 15.0% of scored; 93% non-empty patches |
+| swesmithinstruct540 | **Instruct** | SWE-smith condenser SFT (same as above) | **82 / 500** | **16.4%** | complete board; init ablation vs swesmith540; eval_loss 0.126 vs 0.131 |
+| rawinstruct4b | Qwen3.5-4B (instruct, raw) | — | *13 / 47* | **unusable** | arm died at 47 scored. 2.6% charges infra failures to the model; 27.7% is survivorship bias at n=47. **Babel has no valid untrained-instruct anchor** |
 
-Ordering — **instruct-init + SWE-smith > base-init + SWE-smith > base-init + paper-nonweb** — is
-probably safe, but *the size of the init gap is not determined by this data*. swesmithinstruct540
-lost 61 instances to infra (all of them infra; zero MaxIterations) against swesmith540's 9, so the
-two available estimators bracket the answer from opposite sides:
+**Ordering among the fine-tunes** (unchanged, and the part that is well-supported):
+instruct-init + SWE-smith (16.4%) > base-init + SWE-smith (14.8%) > base-init +
+paper-nonweb (10.4%). Training data is the larger effect — SWE-smith beats paper-nonweb by
+**4.4 pp** at identical init and hyperparameters, outside the ≈1.9 pp σ on a between-arm
+difference (σ≈1.3 pp per arm at p≈0.1, n=500). The init effect is
+**+1.6 pp** raw, inside noise, and the two arms' boards are not like-for-like (492 vs 500
+scored, with instruct carrying more infra-degraded error rows in its denominator);
+conditioning on cleanly-run instances puts it at +3.6 pp. The ablation brackets the init
+effect rather than resolving it.
 
-- **raw rate** (errors counted as failures) understates instruct-init: 16.4% vs 14.8% → **+1.6pp**
-- **conditional rate** (errors dropped) overstates it: 18.7% vs 15.1% → **+3.6pp**
+**Ordering against base is not established.** Against base4b's hard floor (≥10.6%) the
+SWE-smith arms are +4.2/+5.8 pp; against its optimistic point estimate (14.6% of scored)
+they are indistinguishable. **papernonweb1154 at 10.4% sits at or below base on both
+readings — this campaign shows no measurable lift from the paper-nonweb recipe.** Note
+also that base4b scores 0/30 on sphinx (the official pytest parser mis-grades sphinx's
+`tox` output); excluding sphinx, base4b is 53/332 = 16.0% of scored.
 
-Conditional overstates because errors concentrate in `django`/`matplotlib` — the largest repos and
-the hardest instances — so dropping them removes hard work from the denominator, and it removes
-6.8× more of it from the instruct arm. The true init effect lies somewhere in +1.6 to +3.6pp and
-needs the re-run to pin down. Note the ±1–2pp noise band below spans most of that range.
+The claim in the previous revision that the fine-tunes "beat base by 2–3×" rested entirely
+on the 25/500 anchor and does not survive re-measurement.
 
-**The "vs raw base" leg is currently unsupported** — both raw-model baselines are invalid, so the
-campaign cannot yet say by how much fine-tuning beats no fine-tuning, only that the fine-tunes beat
-Graham's 25/500 reference measured on different infra.
-Both fine-tunes clearly reverse Graham's regression finding: his checkpoint was
-mid-cosine-decay at 38% of an epoch; trained to completion, the same 4B + agentic SFT
-data beats base by 2–3×.
+```bash
+# resolved counts, deduplicated by instance
+cd ~/exp/adp-smoke/swebench/full
+python3 - <<'PY'
+import json, glob
+for d in ['score_base4b254','score_rawinstruct4b53','score_papernonweb1154',
+          'score_swesmith540','score_swesmithinstruct540']:
+    per = {}
+    for f in sorted(glob.glob(d + '/reports_*of8/*/report.json')):
+        for k, v in json.load(open(f)).items():
+            if isinstance(v, dict) and 'resolved' in v:
+                per[k] = bool(v['resolved'])
+    print(d, 'unique:', len(per), 'resolved:', sum(per.values()))
+PY
+```
+
+### The 25/500 baseline anchor: why it is not usable
+
+The number **"untrained base Qwen3.5-4B = 25/500 (5.0%)"** appears throughout this repo and
+seeded the campaign's headline SFT lift. It is **a real in-house measurement, but it is not
+comparable to any arm in the table above, and it should not be quoted as a baseline.**
+
+**What it actually is.** Graham's June 2026 run on **Babel**: `Qwen/Qwen3.5-4B-Base` weights
+served with the *fine-tuned* ckpt-2000 tokenizer/chat template, SWE-bench Verified `test`
+(500), his harness (benchmarks PRs #745/#743/#751 + SDK #3641, Apptainer, TP2 2×L40S,
+`NUM_WORKERS=4`, temp 0, 28000/2047, condenser 28k, `qwen3_coder` parser, Epoch GHCR
+images). Raw counts in `../swe-bench-full-4b/README.md:240`; Slurm 8331642 (infer),
+8331644 + 8331751 (score). Not a published/paper number.
+
+**Why it is wrong as a baseline.** The *same base weights* re-evaluated under *this
+campaign's* harness score **53 / 362 = ≥10.6% of the 500 board** — 2.1× Graham's figure.
+The gap is harness, not model: **non-empty patch rate 69.6% vs 19.2%** on identical
+weights. Graham's dominant failure mode was 404/500 *empty* patches ("81% of base outputs
+produced no patch at all"); non-empty patches applied essentially perfectly in both setups,
+so the bottleneck was never diff quality — the agent simply never emitted a patch. Leading
+mechanism (hypothesis, not proven): the 30 s `workspace.execute_command` default timeout on
+`cp_testbed_repo`, fix #3 under *Infra fixes* below, raised to 600 s here and recorded as
+"the #1 infra error fleet-wide (70–87 error rows per arm)". Full-repo copies over loaded
+NFS blow past 30 s, the agent loses its workspace, and the row lands as an empty patch.
+Graham's run predates that fix. This cannot be fully attributed without his raw error rows,
+which are unreadable from this account (`/home/gneubig` is permission-denied).
+
+**The corrected number and its provenance.** **53 resolved / 362 scored — a floor of
+≥10.6% on the full 500 board, 14.6% of the scored subset, 16.0% excluding sphinx.**
+
+- **Cluster: Babel** — the *same* cluster as the 25/500. The two numbers differ by harness
+  and date, **not** by machine. This is an in-house re-measurement, not a paper number.
+- **Model verified from shard metadata, not the directory name:**
+  `score_base4b254/shard_0of8.jsonl` carries `metadata.llm.custom_tokenizer =
+  Qwen/Qwen3.5-4B-Base` and `metadata.eval_output_dir = …/out_base4b/`; its
+  `llm_config.json` is byte-comparable to the arms'. (`out_rawinstruct4b`'s tokenizer path
+  points at the *instruct* snapshot — the two models are cleanly distinguishable on disk.)
+- **Path:** `~/exp/adp-smoke/swebench/full/score_base4b254/`, scoring snapshot 2026-07-15.
+- **Use ≥10.6% for any claim that has to hold.** 14.6% of scored is survivorship-biased
+  upward (the 362-instance board is the cleanly-run subset), though broadly representative
+  — all 12 repos present at ~72% of their full-500 counts.
+
+**On the 10.4% too:** `papernonweb1154` is likewise an **in-house Babel eval** — of a
+checkpoint trained *here* on ADP-paper-*style* `openhands_nonweb` data. It is not a number
+reported by the ADP paper.
+
+**The right θ₀ for instruct-init arms is not on Babel.** Graham's runs all started from a
+base checkpoint, so instruct-init arms were being compared against a *base-model* baseline.
+A matched untrained-**instruct** θ₀ was measured only on the **separate A100 cluster** (the
+v2 A100 rerun, scaffold byte-identical to its arms): **≥70/500 (≥14%)**. `rawinstruct4b`
+was this campaign's attempt at the same anchor on Babel and it died at 47 scored instances.
+
+Full investigation, including the hypotheses ruled out: `../BABEL_baseline_provenance_investigation.md`
+(PR #5). Three other files still carry the dead anchor: `../v2_arms_a100_rerun/README.md:41`
+and `../analysis/adp_v2_data_analysis_report.md:12,:18,:154`.
+
+**Staleness note.** These are the 2026-07-15 scoring snapshot. On 2026-07-26, 862 retryable
+error rows were purged and ~1604 instances were re-queued to fix the infra-error bias
+(PR #4); every arm needs re-scoring afterwards, which should raise the low-denominator arms
+(`base4b`, `rawinstruct4b`) most.
 
 ## Prefix caching + temperature A/B (20 fixed instances, `scripts/run_smoke_ab.sbatch`)
 
