@@ -119,3 +119,58 @@ applies to the checkout.
   throttled. Serve **local snapshot paths, never hub ids**.
 - **uv.lock vs. the SDK fork** — `uv sync` may re-lock (workspace member is the
   fork branch, not the submodule pin); fine with network, watch for drift.
+
+## Eval comparability spec (the "eval card")
+
+**Why this exists.** SWE-bench agentic resolve-rate is a property of *model × harness*, not the
+model alone: on **identical** Qwen3.5-4B-Base weights, one harness scored **5.0%** and another
+**≥10.6–16%** — a ~2–3× swing driven almost entirely by **patch-production rate** (non-empty patches
+19% vs 70%), not capability. So a resolve-rate delta between two runs is a *model* signal only if
+**every knob below matches**; otherwise it is a harness artifact. (In the ADP-v2 campaign a headline
+was inverted twice by a single mismatched setting — an unmeasured / wrong-init baseline.) Treat this
+section as the invariant any future eval must satisfy to be comparable to the reference runs at the end.
+
+### Scaffold — must match exactly
+- **Code**: `dpfried/benchmarks @ babel-scoring-fixes` (PRs #745/#743/#751 + the 3 infra fixes) + SDK
+  `dpfried/software-agent-sdk @ fix-apptainer-tokenizer-condenser` (PR #3641). OpenHands SDK **1.27**.
+- **Agent loop**: `default.j2` prompt, `max_iterations 500`, **temp 0 (single greedy)**, thinking **off**.
+- **Token budget**: `max_input_tokens 28000`, `max_output_tokens 2047`.
+- **Condenser**: **on**, 28k-token threshold.
+- **Tool calling**: vLLM **native** parsing, `qwen3_coder` parser, `native_tool_calling: true`.
+- **Serving**: local snapshot path (**never** a hub id → 429s), **prefix-caching on**, per-job vLLM
+  port (2 shards/node collide otherwise).
+- **Sampling**: **single-run pass@1**. Dedup `instance_id` before counting — a pass@k / retry *union*
+  silently inflates (a θ₀ eval once read 145/500 as a pass@3-union artifact vs a true 119 single-run).
+
+### Infra fixes that MOVE the score — must be present
+- **`workspace.execute_command` timeout 30s→600s** (`cp_testbed_repo`) / 300s (`git reset`). Full-repo
+  copies over loaded NFS blow through 30s → the agent loses its workspace → **empty patch**. Missing
+  this is the single biggest known score-swinger (it explains the 5% vs ≥10.6% base gap).
+- **Scoring `/private` bind** (`apptainer_eval.py`: `--no-mount hostfs`→`hostfs,home,cwd`). Missing →
+  every instance false `patch_successfully_applied:false` → uniform 0-resolved. **Always spot-check one
+  shard `report.json` for `scoring_error` before trusting counts — a uniform 0 across models is a bug,
+  not model perf.**
+- SDK apptainer tokenizer/condenser binds (PR #3641).
+
+### Scoring board
+- Official SWE-bench pytest parser, **but** `sphinx-doc__sphinx` (44 instances) is mis-scored **0/44**
+  — its `tox` output has no per-test `PASSED` markers, so genuine passes read as failures for *every*
+  model. **Report the 456 non-sphinx board as primary**; full-500 secondary with a footnote. (Uniform
+  across models ⇒ doesn't bias a *comparison*, but deflates absolute totals.)
+
+### Baseline & stats discipline
+- **Baseline = the model's EXACT init checkpoint**, evaluated under this identical harness (base ≠
+  instruct — a different model; the "~5% lift" saga was a base-vs-instruct mix-up). No borrowed /
+  cross-harness anchors.
+- Compare models on the **same instance set**, single-run, same seed. Significance = **paired McNemar**
+  (+ TOST for equivalence), not a gap to a round number. **Noise floor ≈ ±15/500** for one temp-0
+  rollout — deltas under that are "unresolved," not "tied." Report per-board (500 / 456 / clean).
+
+### Reference runs (this FAIR A100 harness, SWE-bench Verified 500, single-run pass@1)
+A re-run under the spec above should reproduce these ±~15/500:
+- **θ₀ = `Qwen/Qwen3.5-4B` (instruct) = 119/500 (~24%)** — the load-bearing baseline.
+- adp-v2 SFT arms: swezero 77, rebench 70, coderforge 48, scale 35; pooled55k (joint-train) 46;
+  best soup (top-2) 62.
+- **NOT comparable**: the Babel `../swe-bench-babel-evals/RESULTS.md` numbers (base-init, L40S / Graham
+  harness) — different harness *and* init. Cross-harness absolute comparison is exactly what this card
+  exists to prevent (see the cross-campaign section of the adp-v2 findings report).
