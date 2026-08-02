@@ -99,9 +99,11 @@ patch).
    pass/fail marker the harness's parser looks for, so every instance from it scores as failed
    regardless of patch quality, for every model. This affects all models identically, so it does not
    bias any *relative* comparison, but it deflates every absolute resolve rate reported on the
-   full 500-instance board by a model-dependent (but bounded, small) amount. We report both the
-   full 500-instance board and a primary 456-instance board that excludes this repository; unless
-   noted, "resolve rate" below refers to the 456-instance board.
+   full 500-instance board by a model-dependent (but bounded, small) amount. Since this repository
+   contributes zero resolved instances for every model in this study, raw resolved counts are
+   identical whether expressed "out of 500" or "out of 456" (only the percentage denominator differs);
+   we report raw counts out of 500 throughout for readability, and compute paired significance tests
+   (McNemar/TOST) on the 456-instance board that excludes this repository unless otherwise noted.
 
 **Statistical treatment.** With single-sample (non-repeated) rollouts at n≈500 or n≈300, the smallest
 difference between two models that is reliably distinguishable from sampling noise is roughly ±15
@@ -137,12 +139,16 @@ issues, both instructive beyond this particular study:
 
 - **Harness sensitivity.** The ≈5% figure came from evaluating Qwen3.5-4B-Base (the non-instruct
   variant of the same model family) under an earlier, different harness configuration. Re-evaluating
-  those exact same model weights under the harness configuration used in this report (identical model, different
-  harness) recovered a resolve rate of at least 10.6% of the full board — more than double the earlier
-  figure. The gap was concentrated almost entirely in how often the agent produced *any* patch at all
-  (roughly 70% of episodes ended with a non-empty patch under the harness used here, versus roughly
-  19% under the earlier configuration, on the identical model weights), not in the quality of patches
-  once produced.
+  those exact same model weights under the harness configuration used in this report (identical model,
+  different harness) recovered a resolve rate of *at least* 10.6% of the full board — more than double
+  the earlier figure, and a hard floor rather than a point estimate: that re-evaluation run did not
+  successfully score every instance (infrastructure errors left some unscored), and treating every
+  unscored instance as unresolved is what gives 10.6%; the resolve rate among the instances that did
+  score cleanly was somewhat higher, though that subset may not be representative, since harder
+  instances plausibly fail to score more often. The gap was concentrated almost entirely in how often
+  the agent produced *any* patch at all (roughly 70% of episodes ended with a non-empty patch under the
+  harness used here, versus roughly 19% under the earlier configuration, on the identical model
+  weights), not in the quality of patches once produced.
 - **Wrong checkpoint.** Separately, that ≈5% figure was for Qwen3.5-4B-Base, whereas all four
   fine-tuned arms in this study start from the instruct model. The instruct model's own untrained
   resolve rate (119/500, measured here) is itself more than double Qwen3.5-4B-Base's resolve rate
@@ -198,29 +204,39 @@ data than pass/fail filtering.
 
 ### 2.3 Where does fine-tuning gain and lose capability?
 
-The 42-point gap between the instruct model (119) and the best arm (`swezero`, 77) is not spread
-evenly across the benchmark. Comparing the instruct model's resolved instances to the *best* of the
-four arms,
-per repository:
+The instruct model (119) outscores the strongest single arm, `swezero` (77), by 42 points in aggregate.
+That 42-point gap is not spread evenly across the benchmark. To localize it, we compare the instruct
+model against a **per-repository oracle** — the best of the four arms *on each repository individually*,
+which may be a different arm in each row (this is the same routing oracle discussed in §2.4, whose total
+across repositories is 83/500):
 
-| repository | instruct model | best of 4 arms | instruct model − best arm |
-|---|---:|---:|---:|
-| sympy | 29 | 8 | **+21** |
-| scikit-learn | 14 | 6 | **+8** |
-| xarray | 7 | 3 | +4 |
-| pytest | 6 | 4 | +2 |
-| astropy | 4 | 3 | +1 |
-| requests | 3 | 2 | +1 |
-| matplotlib | 3 | 2 | +1 |
-| pylint | 1 | 1 | 0 |
-| flask | 1 | 1 | 0 |
-| django | 51 | 53 | **−2** (the one repository where an arm beats the instruct model) |
+| repository | instances | instruct model | best of 4 arms (per repo) | instruct model − best |
+|---|---:|---:|---:|---:|
+| sympy | 75 | 29 | 8 | **+21** |
+| scikit-learn | 32 | 14 | 6 | **+8** |
+| xarray | 22 | 7 | 3 | +4 |
+| pytest | 19 | 6 | 4 | +2 |
+| astropy | 22 | 4 | 3 | +1 |
+| requests | 8 | 3 | 2 | +1 |
+| matplotlib | 34 | 3 | 2 | +1 |
+| pylint | 10 | 1 | 1 | 0 |
+| flask | 1 | 1 | 1 | 0 |
+| django | 231 | 51 | 53 | **−2** (the one repository where an arm beats the instruct model) |
+| seaborn | 2 | 0 | 0 | 0 |
 
-The instruct model matches or exceeds the best arm on **9 of the 10** repositories with enough instances
-to compare; only on `django` (the largest repository, 46% of the benchmark) does any arm edge ahead of
-the instruct model, and only by 2. The aggregate gap concentrates heavily in `sympy` (+21) and, to a lesser
-extent, `scikit-learn` (+8); the remaining repositories contribute only a few points each, individually
-within the noise floor for a benchmark of this size.
+(The twelfth SWE-bench Verified repository, `sphinx`, is excluded here as in §1.3; `seaborn` has only 2
+instances and both the instruct model and every arm score 0 there, so it is a zero-contribution row.)
+Because the "best of 4 arms" column is a per-repository oracle rather than a single fixed arm, its total
+(83) is higher than `swezero`'s own aggregate score (77), and this table's differences sum to **36**, not
+the 42-point single-arm gap quoted above — the two numbers answer related but distinct questions (one
+arm's aggregate deficit vs. the *best-case*, per-repository deficit against an oracle that can pick a
+different arm for every repository), and both are used elsewhere in this report (§2.4 uses the 83/36 view).
+
+The instruct model matches or exceeds the best arm on **10 of the 11** scoreable repositories; only on
+`django` (the largest repository, 46% of the benchmark) does any arm edge ahead of the instruct model,
+and only by 2. The aggregate gap concentrates heavily in `sympy` (+21) and, to a lesser extent,
+`scikit-learn` (+8); the remaining repositories contribute only a few points each, individually within
+the noise floor for a benchmark of this size.
 
 Two checks rule out the more mundane explanations for this pattern:
 
@@ -276,38 +292,52 @@ combination experiments in §2.5–2.6.
 
 Since all four arms are fine-tuned from the same initialization, each defines a **task vector**
 τᵢ = θᵢ − θ₀ (the displacement from the shared starting checkpoint θ₀, i.e. the instruct model). We
-decompose each task vector into
-a shared component and an arm-specific residual: τᵢ = s + rᵢ, where s is the mean of the four task
-vectors and rᵢ = τᵢ − s is what remains for arm i (by construction, the four residuals sum to zero).
+decompose each task vector into a shared component and an arm-specific residual: τᵢ = s + rᵢ, where s
+is the mean of the four task vectors and rᵢ = τᵢ − s is what remains for arm i (by construction, the
+four residuals sum to zero).
 
 Measuring this decomposition: all four task vectors have nearly identical norms (14.9–15.3, in the
 model's parameter space), and each is only weakly aligned with the others (pairwise cosine similarity
 0.20–0.26 — well above what unrelated random directions would produce, but far from parallel). The
 shared direction s captures only **65% of a typical arm's norm** (‖s‖ / mean‖τᵢ‖ = 0.646), meaning
-each arm's residual rᵢ carries roughly 75–78% of that arm's total displacement from the instruct model —
-a large amount of arm-specific structure that a *simple average* of the four task vectors necessarily
-discards, since the residuals cancel out of an unweighted mean by construction. Breaking the
+each arm's residual rᵢ carries roughly 75–78% of that arm's total displacement from the instruct model
+(these two percentages are norms of different, close-to-orthogonal components, not fractions of a
+whole, so they need not sum to 100% — by the Pythagorean relation for near-orthogonal vectors,
+0.646² + 0.76² ≈ 1.0) — a large amount of arm-specific structure that a *simple average* of the four
+task vectors necessarily discards, since the residuals cancel out of an unweighted mean by construction. Breaking the
 comparison down by model component shows this shared/residual split is not uniform across the network:
 embedding and output layers align strongly across arms (cosine ≈ 0.67 — consistent with a shared
 format/tool-use adaptation), while the attention and MLP layers — where task-specific skill is
 presumably learned — are far less aligned (cosine ≈ 0.10–0.11), most divergent in early layers.
 
-This geometry makes a specific, testable prediction: an equal-weight average of the four fine-tuned
-models' weights should retain roughly 65% of a typical arm's total displacement from the instruct model
-(the shared component), but discard essentially all of each arm's residual, arm-specific capability.
-The results confirm this:
+This geometry entails a mathematical fact and raises a separate empirical question. The fact, which
+follows directly from the definitions above and needs no experiment to confirm: an equal-weight average
+of the four fine-tuned models' weights keeps *exactly* the shared component s (≈65% of a typical arm's
+displacement from the instruct model) and cancels the four residuals exactly, by construction. The open
+empirical question is whether the *performance* associated with each arm's residual survives being
+discarded this way, or whether it was concentrated in the shared component instead — that is not
+determined by the geometry and has to be measured:
 
 | combination | resolved / 500 | vs. instruct model | vs. best single arm |
 |---|---:|---|---|
 | instruct model | **119** | — | — |
 | best single arm (`swezero`) | 77 | — | — |
-| best soup found (average of the two strong-tier arms only) | 62 | significantly below (p < 10⁻⁴) | significantly below (p = 0.014, clean subset) |
+| best soup found (average of the two strong-tier arms only) | 62 | significantly below (p < 10⁻⁴) | significantly below on the decontaminated 301-instance board (p = 0.014); not significant on the full 456-instance board (p = 0.10) — see note below |
 | equal-weight average of all four arms | 50 | significantly below (p < 10⁻⁴) | significantly below (p = 0.0016) |
+
+The results show the discarded residuals, not the retained shared component, are where each arm's
+performance lived: every soup variant lands well below the arm(s) it was averaged from.
 
 The equal-weight average of all four arms' weights lands in the **weak tier** — statistically
 indistinguishable from the two weakest single arms, and significantly below both strong-tier arms
 (swezero: p = 0.0016; rebench: p = 0.025). Restricting the average to just the two strong-tier arms
-recovers somewhat but is still well below the best individual arm and far below the instruct model.
+recovers somewhat but is still well below the best individual arm and far below the instruct model —
+though this specific comparison against `swezero` is a near-tie on the full 456-instance board (p =
+0.10) and only becomes clearly significant on the decontaminated 301-instance board (p = 0.014). The
+discrepancy traces to `sympy`: the two-arm soup includes `rebench` (the sympy specialist, §2.2) and
+scores 11/75 there against `swezero`'s 3/75, a repository-specific edge that narrows the overall
+456-board gap; the 301-instance board excludes `sympy` (along with the other contaminated repositories,
+§1.3) and reveals the larger, more representative deficit underneath it.
 
 We further tested scaling the shared direction alone, θ(α) = θ₀ + α·s, for α ranging from 0.7 to 2.0
 (α = 1 is the equal-weight average above; α ≈ 1.55 restores the *norm* of a typical single arm along
@@ -345,8 +375,8 @@ the instruct model, nor does it beat the strongest single-source arm.**
 ### 2.7 Why does fine-tuning underperform? A mechanistic case study
 
 To understand *why* fine-tuning underperforms the instruct model, we audited every instance the
-model solves but the strongest arm (`swezero`) does not (82 instances). In every one of these 82
-cases, the fine-tuned model's submitted patch is syntactically valid and applies cleanly to the
+instruct model solves but the strongest arm (`swezero`) does not (82 instances). In every one of these
+82 cases, the fine-tuned model's submitted patch is syntactically valid and applies cleanly to the
 repository — none are empty, malformed, or the product of an early, incomplete termination. The
 failures are not scaffold breakdowns; they are patches that are well-formed but do not fix the
 underlying bug (misdiagnosis).
@@ -358,6 +388,12 @@ Looking at overall episode behavior confirms a systematic behavioral shift, not 
 | episodes reaching a final answer | 207 / 500 | 500 / 500 |
 | episodes ending with an empty patch | 138 / 500 | 0 / 500 |
 | mean agent actions per episode | ~171 | ~92 |
+
+These two instruct-model counts do not sum to 500: 362 episodes (500 − 138) ended with a non-empty
+patch, but only 207 explicitly reached a final answer, so 155 episodes exhausted the iteration budget
+without an explicit final action yet still left a non-empty diff in the workspace, which the harness
+scores directly (we have not established what fraction of the instruct model's 119 resolved instances
+fall in this category, only that it is a substantial share of its episodes overall).
 
 The fine-tuned model is *more* compliant with the agent scaffold in every respect measured here — it
 always finishes, it always produces a patch, and it does so in about half as many steps as the
@@ -378,15 +414,21 @@ fine-tuned behavior instead. The result reported throughout this study should be
 on this data does not improve single-attempt resolve rate on this benchmark,"** not as a
 protocol-independent claim about capability in general.
 
-**A candidate, correlational (not yet causally tested) explanation.** Auditing the training data
-itself finds two properties that plausibly contribute to this shift: roughly 40% of training records
-are condensation/summarization turns (the trajectory narrates and concludes progress rather than
-taking a new action), and none of the training data carries a task-outcome label, so unresolved and
-looping trajectories are imitated on equal footing with successfully-resolved ones. Both properties are
+**A candidate, correlational (not yet causally tested) explanation.** Auditing `swezero`'s training data
+(the arm audited above) finds two properties that plausibly contribute to this shift: 34% of its
+records are condensation/summarization turns (the trajectory narrates and concludes progress rather
+than taking a new action; a similar proportion, 39%, holds for `coderforge`, though the other two
+sources are not measured on this axis, so we do not know whether this generalizes across all four),
+and none of the training data carries a task-outcome label, so unresolved and looping trajectories are
+imitated on equal footing with successfully-resolved ones. Both properties are
 consistent with training a fast, confident, conclusion-oriented policy. A direct test — fine-tuning one
 arm on an outcome-filtered, condensation-excluded version of the same data source, holding everything
 else fixed — would establish whether curating along these two axes recovers some or all of the lost
 depth; this experiment has not yet been run and is the most direct open follow-up to this study.
+(`adp_v2_commentary.md`, a companion discussion note, goes further into candidate mechanisms — including
+whether this is better characterized as a policy shift, a partial erosion of general capability from
+full-parameter fine-tuning, or an imitation-learning/partial-observability effect specific to agentic
+tasks — with additional falsifiable predictions beyond the single curation ablation proposed here.)
 
 ### 2.8 Comparison to a companion campaign
 
@@ -404,11 +446,10 @@ arms in this report (35–77) and that campaign's results (52–82) occupy a bro
 but not all fine-tunes land in the same place — our two weaker arms (48, 35) are well below that
 campaign's results. What is notable is specifically at the *top* end: the strongest recipe on each side
 lands in a similar 74–82 band regardless of whether training started from Qwen3.5-4B-Base or from the
-instruct model — that campaign's strongest Qwen3.5-4B-Base-initialized recipes rise to 74 and 82,
-while our strongest arm (77, instruct-initialized) sits at the bottom of that same band, well below the
-instruct model's own untrained resolve rate of 119 that it started from. This is consistent with
-(though not, on its own, proof of) the
-same phenomenon identified mechanistically in §2.7: this style of agentic-SWE fine-tuning may pull
+instruct model — that campaign's strongest Qwen3.5-4B-Base-initialized recipes rise to 74 and 82, and
+our strongest arm (77, instruct-initialized) sits inside that same band too, well below the instruct
+model's own untrained resolve rate of 119 that it started from. This is consistent with (though not, on
+its own, proof of) the same phenomenon identified mechanistically in §2.7: this style of agentic-SWE fine-tuning may pull
 models of different starting strength toward a common point on this benchmark, rather than uniformly
 adding capability on top of wherever a model started. Confirming this would require a matched-harness
 instruction-tuned baseline evaluated on that campaign's own infrastructure, which does not currently
@@ -456,8 +497,8 @@ recovers what separate single-source training achieves, let alone the instruct m
 - **Benchmark scoring artifact.** 44 of 500 instances (one repository) cannot be resolved under the
   standard scoring harness regardless of model quality, for a benchmark-specific test-output-parsing
   reason. This affects all models identically and does not bias relative comparisons, but deflates
-  every model's absolute resolve rate by a small amount; we primarily report the 456-instance board
-  excluding these instances.
+  every model's absolute resolve rate by a small amount; we report raw counts out of 500 throughout
+  (see §1.3) and compute significance tests on the 456-instance board excluding these instances.
 - **Contamination check is repository-level, not instance-exact.** The decontamination check in
   §1.3/§2.3 excludes entire repositories with any known training/evaluation overlap for any arm; a
   fully instance-exact audit for every source has not been completed.
@@ -483,3 +524,9 @@ recovers what separate single-source training achieves, let alone the instruct m
 - Investigate whether a stronger, non-text-based router (e.g. using model confidence signals rather
   than surface problem-text features) can approach the 131-instance oracle union identified in §2.4,
   since the simple routing strategies tested there captured only a small fraction of it.
+- `adp_v2_commentary.md` proposes several cheap, discriminating experiments aimed at separating a pure
+  policy-shift explanation of §2.7 from a partial capability-erosion one (e.g. evaluating the fine-tuned
+  arm on a non-agentic reasoning benchmark; forcing longer exploration at inference time via a prompt
+  intervention; checking whether the fine-tuned arm's decision to stop correlates with actually having
+  read the relevant files, or just with turn count) — these are lower-cost than the training-data
+  curation ablation above and could be run first to sharpen which mechanism the ablation should target.
