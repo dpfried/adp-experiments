@@ -203,7 +203,7 @@ evenly across the benchmark. Comparing the instruct model's resolved instances t
 four arms,
 per repository:
 
-| repository | base | best of 4 arms | base − best arm |
+| repository | instruct model | best of 4 arms | instruct model − best arm |
 |---|---:|---:|---:|
 | sympy | 29 | 8 | **+21** |
 | scikit-learn | 14 | 6 | **+8** |
@@ -214,11 +214,11 @@ per repository:
 | matplotlib | 3 | 2 | +1 |
 | pylint | 1 | 1 | 0 |
 | flask | 1 | 1 | 0 |
-| django | 51 | 53 | **−2** (the one repository where an arm beats the base) |
+| django | 51 | 53 | **−2** (the one repository where an arm beats the instruct model) |
 
 The instruct model matches or exceeds the best arm on **9 of the 10** repositories with enough instances
 to compare; only on `django` (the largest repository, 46% of the benchmark) does any arm edge ahead of
-the base, and only by 2. The aggregate gap concentrates heavily in `sympy` (+21) and, to a lesser
+the instruct model, and only by 2. The aggregate gap concentrates heavily in `sympy` (+21) and, to a lesser
 extent, `scikit-learn` (+8); the remaining repositories contribute only a few points each, individually
 within the noise floor for a benchmark of this size.
 
@@ -236,7 +236,7 @@ Two checks rule out the more mundane explanations for this pattern:
 We characterize this as **systematic degradation on domains the instruct model already handled well**,
 concentrated in a couple of specific repositories, rather than either a uniform capability loss or an
 isolated one-repository anomaly. This degradation, not a general capability gap, is the dominant
-contributor to the raw 42-point base-vs-best-arm difference: restricting to a "clean" 301-instance
+contributor to the raw 42-point instruct-model-vs-best-arm difference: restricting to a "clean" 301-instance
 subset (excluding all repositories touched by training-data overlap for *any* arm, including
 `sympy`), the instruct model's advantage over the best arm shrinks to a statistically non-significant +10
 (76 vs. 66, McNemar p = 0.30). **We do not find a significant general improvement in single-attempt
@@ -390,12 +390,12 @@ depth; this experiment has not yet been run and is the most direct open follow-u
 
 ### 2.8 Comparison to a companion campaign
 
-A related campaign trained similar agentic-SWE data recipes on **the non-instruction-tuned base
-checkpoint**, using different training and evaluation infrastructure than the one described in this
-report. Its headline single-run pass@1 results on the same benchmark: a curated recipe reached 52/500
-(10.4%); a different data recipe reached 74/500 (14.8%) starting from the base checkpoint, and — in an
-isolated ablation that changed only the initialization, holding the data fixed — 82/500 (16.4%)
-starting from the instruction-tuned checkpoint instead.
+A related campaign trained similar agentic-SWE data recipes starting from **Qwen3.5-4B-Base** (the
+same non-instruct checkpoint introduced in §2.1), using different training and evaluation
+infrastructure than the one described in this report. Its headline single-run pass@1 results on the
+same benchmark: a curated recipe reached 52/500 (10.4%); a different data recipe reached 74/500
+(14.8%) starting from Qwen3.5-4B-Base, and — in an isolated ablation that changed only the
+initialization, holding the data fixed — 82/500 (16.4%) starting from the instruct model instead.
 
 Because that campaign used different infrastructure, and §2.1 established that infrastructure details
 alone can move absolute resolve rates several-fold on identical model weights, any cross-campaign
@@ -403,10 +403,11 @@ absolute comparison must be read as suggestive, not confirmed. With that caveat:
 arms in this report (35–77) and that campaign's results (52–82) occupy a broadly similar overall range,
 but not all fine-tunes land in the same place — our two weaker arms (48, 35) are well below that
 campaign's results. What is notable is specifically at the *top* end: the strongest recipe on each side
-lands in a similar 74–82 band regardless of whether training started from the base or the
-instruction-tuned checkpoint — that campaign's strongest base-initialized recipes rise to 74 and 82,
-while our strongest instruction-tuned arm (77) sits at the bottom of that same band, well below its own
-instruction-tuned starting point (119). This is consistent with (though not, on its own, proof of) the
+lands in a similar 74–82 band regardless of whether training started from Qwen3.5-4B-Base or from the
+instruct model — that campaign's strongest Qwen3.5-4B-Base-initialized recipes rise to 74 and 82,
+while our strongest arm (77, instruct-initialized) sits at the bottom of that same band, well below the
+instruct model's own untrained resolve rate of 119 that it started from. This is consistent with
+(though not, on its own, proof of) the
 same phenomenon identified mechanistically in §2.7: this style of agentic-SWE fine-tuning may pull
 models of different starting strength toward a common point on this benchmark, rather than uniformly
 adding capability on top of wherever a model started. Confirming this would require a matched-harness
