@@ -12,9 +12,10 @@ model already handled well. A patch-level audit suggests fine-tuning shifts the 
 deep, exploratory problem-solving toward a faster, more scaffold-compliant but shallower policy — a
 trade that this particular benchmark's single-attempt scoring penalizes. We also find that whether a
 data source's trajectories were execution-verified (i.e., only kept if the fix actually passed tests)
-was not predictive of downstream benchmark performance: the *unverified* source produced one of the
-two best fine-tunes, on par with a verified source and significantly ahead of the other two verified
-sources.
+was not, by itself, predictive of downstream benchmark performance: the *unverified* source produced
+one of the two best fine-tunes, on par with a verified source and significantly ahead of the other two
+verified sources (though this comparison is across only four, otherwise-uncontrolled sources — see
+§1.1/§2.2 for the caveat).
 
 ---
 
@@ -32,16 +33,19 @@ tool-calling trajectory format. We refer to each resulting model as an **arm**. 
 their distillation teacher model, and whether their trajectories were execution-verified (kept only
 if the agent's patch actually made the target tests pass) are:
 
-| arm | data source | teacher model | execution-verified? |
-|---|---|---|:--:|
-| `coderforge` | `coderforge_preview` | Qwen3-Coder-480B | yes |
-| `scale` | `scale_swe_distilled` | DeepSeek v3.2 | yes |
-| `rebench` | a SWE-bench-style rebuild dataset | Qwen3-Coder-480B | yes (+ regression tests) |
-| `swezero` | an execution-free distillation set | Qwen3-Coder-480B | **no** |
+| arm | data source | teacher model | execution-verified? | non-action/condensation turns |
+|---|---|---|:--:|:--:|
+| `coderforge` | `coderforge_preview` | Qwen3-Coder-480B | yes | 39% |
+| `scale` | `scale_swe_distilled` | DeepSeek v3.2 | yes | — |
+| `rebench` | a SWE-bench-style rebuild dataset | Qwen3-Coder-480B | yes (+ regression tests) | — |
+| `swezero` | an execution-free distillation set | Qwen3-Coder-480B | **no** | 34% |
 
-`coderforge` and `swezero` share the same teacher model, scaffold, and problem domain and differ
-*only* in whether the trajectories were execution-verified — a controlled contrast for testing
-whether verification quality matters, holding everything else fixed.
+`coderforge` and `swezero` share the same teacher model and scaffold and are the source pair that
+differs most directly in execution-verification status, but they are otherwise disjoint datasets
+with different underlying problem sets and pipelines, and (as the table shows) somewhat different
+proportions of non-action, condensation/summarization turns — so this pair is *not* a clean,
+single-variable controlled ablation of verification status alone; treat the comparison in §2.2 as
+suggestive of a real effect (n=4 sources, uncontrolled), not as an isolated causal test.
 
 Each arm's training set is a fixed-size, deterministically sampled 55,000-record subset of its
 source (reservoir-sampled from a larger pool with a fixed seed), converted to an OpenAI-style
@@ -183,11 +187,13 @@ quality predicted downstream agent performance, `swezero` should be the *weakest
 tied for the *strongest*, matching the verified `rebench` and significantly ahead of both other
 verified sources (`coderforge`, `scale`) by more than 20 resolved instances — a gap that persists (66
 vs. 41, decontaminated) after removing every instance with any training/evaluation overlap. `swezero`
-and `coderforge` are a particularly clean contrast here: both are distilled from the same teacher model
-in the same scaffold and problem domain, differing *only* in whether trajectories were
-execution-verified — yet the unverified source produced the substantially stronger arm. In this
-comparison, execution-verification of training trajectories was not predictive of downstream benchmark
-performance; whatever separates the strong tier from the weak tier here is a different property of the
+and `coderforge` are the pair sharing a teacher model and scaffold whose most salient documented
+difference is verification status — yet the unverified source produced the substantially stronger
+arm. As noted in §1.1, this is not an isolated, single-variable ablation (the two sources are
+otherwise disjoint and differ somewhat in composition too), so we treat this as suggestive rather
+than a controlled causal test: across these four sources, execution-verification of training
+trajectories was not, by itself, predictive of downstream benchmark performance; whatever separates
+the strong tier from the weak tier here is at least partly a different property of the
 data than pass/fail filtering.
 
 ### 2.3 Where does fine-tuning gain and lose capability?
@@ -232,9 +238,11 @@ isolated one-repository anomaly. This degradation, not a general capability gap,
 contributor to the raw 42-point base-vs-best-arm difference: restricting to a "clean" 301-instance
 subset (excluding all repositories touched by training-data overlap for *any* arm, including
 `sympy`), the base model's advantage over the best arm shrinks to a statistically non-significant +10
-(76 vs. 66, McNemar p = 0.30). **We do not find a significant general-capability improvement from
-fine-tuning on this benchmark, and we find a significant, repository-concentrated loss of
-pre-existing capability that is not attributable to contamination.**
+(76 vs. 66, McNemar p = 0.30). **We do not find a significant general improvement in single-attempt
+resolve rate from fine-tuning on this benchmark, and we find a significant, repository-concentrated
+loss of pre-existing solve-rate that is not attributable to contamination** (§2.7 discusses why this
+should be read as specific to this benchmark's single-attempt scoring, not as a protocol-independent
+claim about capability).
 
 ### 2.4 Complementarity across sources: how much could be gained by combining them?
 
@@ -389,10 +397,12 @@ starting from the instruction-tuned checkpoint instead.
 Because that campaign used different infrastructure, and §2.1 established that infrastructure details
 alone can move absolute resolve rates several-fold on identical model weights, any cross-campaign
 absolute comparison must be read as suggestive, not confirmed. With that caveat: the four single-source
-arms in this report (35–77) and that campaign's results (52–82) occupy a broadly similar range, and,
-strikingly, **cluster within roughly the same 74–82 band regardless of whether training started from
-the base or the instruction-tuned checkpoint** — the weak base-initialized recipes rise toward that
-band, while our strong instruction-tuned arm (77) sits at the bottom of it, well below its own
+arms in this report (35–77) and that campaign's results (52–82) occupy a broadly similar overall range,
+but not all fine-tunes land in the same place — our two weaker arms (48, 35) are well below that
+campaign's results. What is notable is specifically at the *top* end: the strongest recipe on each side
+lands in a similar 74–82 band regardless of whether training started from the base or the
+instruction-tuned checkpoint — that campaign's strongest base-initialized recipes rise to 74 and 82,
+while our strongest instruction-tuned arm (77) sits at the bottom of that same band, well below its own
 instruction-tuned starting point (119). This is consistent with (though not, on its own, proof of) the
 same phenomenon identified mechanistically in §2.7: this style of agentic-SWE fine-tuning may pull
 models of different starting strength toward a common point on this benchmark, rather than uniformly
