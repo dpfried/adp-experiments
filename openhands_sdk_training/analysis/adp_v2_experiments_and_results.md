@@ -3,12 +3,12 @@
 **Summary.** We fine-tune a 4B instruction-tuned language model on four different agentic
 software-engineering (SWE) trajectory datasets and evaluate on SWE-bench Verified. None of the four
 resulting models, nor any weight-space combination of them, nor a jointly-trained model on their
-pooled data, beats the *untrained* base model's own resolve rate. The apparent large "lift" from
+pooled data, beats the *untrained* instruct model's own resolve rate. The apparent large "lift" from
 fine-tuning reported in earlier analyses was an artifact of comparing against an incorrectly-measured
 baseline (wrong checkpoint, wrong evaluation harness); once the baseline is measured correctly, under
 the same harness and from the exact checkpoint the fine-tunes started from, fine-tuning shows no
-significant general improvement and a systematic, measurable *loss* of capability on domains the base
-model already handled well. A patch-level audit suggests fine-tuning shifts the model's behavior from
+significant general improvement and a systematic, measurable *loss* of capability on domains the
+instruct model already handled well. A patch-level audit suggests fine-tuning shifts the model's behavior from
 deep, exploratory problem-solving toward a faster, more scaffold-compliant but shallower policy — a
 trade that this particular benchmark's single-attempt scoring penalizes. We also find that whether a
 data source's trajectories were execution-verified (i.e., only kept if the fix actually passed tests)
@@ -21,11 +21,12 @@ verified sources (though this comparison is across only four, otherwise-uncontro
 
 ## 1. Setup
 
-### 1.1 Base model and training data
+### 1.1 Instruct model and training data
 
-The base model is **Qwen3.5-4B**, instruction-tuned checkpoint (not the non-instruct base variant of
-the same model family, which we also evaluate separately as a comparison point). All fine-tuned
-models below start from this same instruction-tuned checkpoint.
+All fine-tuning below starts from **Qwen3.5-4B**, the instruction-tuned checkpoint — we call this the
+**instruct model** throughout. This is a distinct checkpoint from **Qwen3.5-4B-Base**, the non-instruct
+pretrained variant of the same model family, which shows up separately below only as a comparison
+point (§2.1, §2.8) and never as a fine-tuning starting point in this study.
 
 We fine-tune four separate models — one per training-data source — on trajectories drawn from four
 distinct agentic-SWE datasets that a shared normalization pipeline had converted into a common
@@ -87,7 +88,7 @@ patch).
 **Two evaluation-methodology points are important for interpreting every result below:**
 
 1. **A benchmark resolve rate is a property of the model *and* the evaluation harness together, not
-   of the model alone.** In a controlled check, we re-scored the identical (untrained) base model
+   of the model alone.** In a controlled check (§2.1), we re-scored the identical (untrained) Qwen3.5-4B-Base checkpoint
    under two different harness configurations and observed resolve rates differing by roughly
    2–3× (see §2.1) — driven almost entirely by how often each configuration allowed the agent to
    produce *any* patch at all, not by any difference in patch quality. Absolute numbers should
@@ -123,30 +124,29 @@ artifacts. This check is at repository granularity, not exact instance-level mat
 
 ### 2.1 The importance of a correctly-measured baseline
 
-Before fine-tuning, we measure the untrained base model's own resolve rate, under the *identical*
+Before fine-tuning, we measure the untrained instruct model's own resolve rate, under the *identical*
 evaluation harness used for every fine-tuned model, with a single deterministic rollout per instance
 (matching the fine-tuned models' evaluation protocol exactly, so the comparison is apples-to-apples).
 
-**The untrained instruction-tuned base model resolves 119/500 (23.8%; 26.1% on the 456-instance
-board).** This is the correct comparison point for every result below, since it is the exact
+**The untrained instruct model resolves 119/500 (23.8%; 26.1% on the 456-instance board).** This is the correct comparison point for every result below, since it is the exact
 checkpoint every fine-tuned arm started from, evaluated the same way.
 
 This number is substantially higher than an earlier, informal reference point of "≈5%" that had been
-used as a sanity anchor for this base model. Investigating the discrepancy traced it to two compounding
+used as a sanity anchor for the instruct model. Investigating the discrepancy traced it to two compounding
 issues, both instructive beyond this particular study:
 
-- **Harness sensitivity.** The ≈5% figure came from evaluating the *non-instruction-tuned* variant of
-  the same base model under an earlier, different harness configuration. Re-evaluating those exact
-  same model weights under the harness configuration used in this report (identical model, different
+- **Harness sensitivity.** The ≈5% figure came from evaluating Qwen3.5-4B-Base (the non-instruct
+  variant of the same model family) under an earlier, different harness configuration. Re-evaluating
+  those exact same model weights under the harness configuration used in this report (identical model, different
   harness) recovered a resolve rate of at least 10.6% of the full board — more than double the earlier
   figure. The gap was concentrated almost entirely in how often the agent produced *any* patch at all
   (roughly 70% of episodes ended with a non-empty patch under the harness used here, versus roughly
   19% under the earlier configuration, on the identical model weights), not in the quality of patches
   once produced.
-- **Wrong checkpoint.** Separately, that ≈5% figure was for the *non-instruction-tuned* base model,
-  whereas all four fine-tuned arms in this study start from the *instruction-tuned* checkpoint. The
-  instruction-tuned checkpoint's own untrained resolve rate (119/500, measured here) is itself more
-  than double the non-instruction-tuned checkpoint's resolve rate under the same (corrected) harness.
+- **Wrong checkpoint.** Separately, that ≈5% figure was for Qwen3.5-4B-Base, whereas all four
+  fine-tuned arms in this study start from the instruct model. The instruct model's own untrained
+  resolve rate (119/500, measured here) is itself more than double Qwen3.5-4B-Base's resolve rate
+  under the same (corrected) harness.
 
 Both effects compounded: an informal "≈5%" reference for the wrong checkpoint under an inferior
 harness configuration made a ~75-point fine-tuning arm look like a large improvement, when the correct
@@ -159,18 +159,18 @@ this benchmark can move several-fold on identical model weights purely from harn
 
 ### 2.2 Single-source fine-tuning: scores and a verification-quality surprise
 
-Full-board resolve rates for the four single-source arms, alongside the base model:
+Full-board resolve rates for the four single-source arms, alongside the instruct model:
 
 | model | resolved / 500 | resolve rate |
 |---|---:|---:|
-| base model (no fine-tuning) | **119** | **23.8%** |
+| instruct model (no fine-tuning) | **119** | **23.8%** |
 | `swezero` | 77 | 15.4% |
 | `rebench` | 70 | 14.0% |
 | `coderforge` | 48 | 9.6% |
 | `scale` | 35 | 7.0% |
 
-**No arm beats the base model**, and the gap is large: the strongest arm resolves 42 fewer instances
-than the untrained base checkpoint it was fine-tuned from (§2.3 examines where this gap comes from).
+**No arm beats the instruct model**, and the gap is large: the strongest arm resolves 42 fewer instances
+than the untrained instruct checkpoint it was fine-tuned from (§2.3 examines where this gap comes from).
 
 Among the four arms, paired testing reveals a **two-tier structure rather than a strict four-way
 ranking**: `swezero` and `rebench` are statistically indistinguishable from each other (McNemar
@@ -198,8 +198,9 @@ data than pass/fail filtering.
 
 ### 2.3 Where does fine-tuning gain and lose capability?
 
-The 42-point gap between the base model (119) and the best arm (`swezero`, 77) is not spread evenly
-across the benchmark. Comparing the base model's resolved instances to the *best* of the four arms,
+The 42-point gap between the instruct model (119) and the best arm (`swezero`, 77) is not spread
+evenly across the benchmark. Comparing the instruct model's resolved instances to the *best* of the
+four arms,
 per repository:
 
 | repository | base | best of 4 arms | base − best arm |
@@ -215,7 +216,7 @@ per repository:
 | flask | 1 | 1 | 0 |
 | django | 51 | 53 | **−2** (the one repository where an arm beats the base) |
 
-The base model matches or exceeds the best arm on **9 of the 10** repositories with enough instances
+The instruct model matches or exceeds the best arm on **9 of the 10** repositories with enough instances
 to compare; only on `django` (the largest repository, 46% of the benchmark) does any arm edge ahead of
 the base, and only by 2. The aggregate gap concentrates heavily in `sympy` (+21) and, to a lesser
 extent, `scikit-learn` (+8); the remaining repositories contribute only a few points each, individually
@@ -224,20 +225,20 @@ within the noise floor for a benchmark of this size.
 Two checks rule out the more mundane explanations for this pattern:
 
 - **Not a training-data leak.** `scikit-learn` and `pytest` are not present in *any* arm's training
-  data, yet the base model beats every arm there too — so the pattern is not an artifact of contaminated
+  data, yet the instruct model beats every arm there too — so the pattern is not an artifact of contaminated
   overlap between training and evaluation data.
-- **Not just the weakest arm underperforming.** On both `sympy` and `scikit-learn`, the base model
+- **Not just the weakest arm underperforming.** On both `sympy` and `scikit-learn`, the instruct model
   beats even the *union* of what all four arms can solve combined (29 vs. 13 on sympy; 14 vs. 12 on
-  scikit-learn) — pooling every arm's solved instances together still does not recover the base
-  model's count. All four fine-tunes independently lost capability the base model had on these
+  scikit-learn) — pooling every arm's solved instances together still does not recover the instruct
+  model's count. All four fine-tunes independently lost capability the instruct model had on these
   domains, including the arm that was directly trained on `sympy`-repository data.
 
-We characterize this as **systematic degradation on domains the base model already handled well**,
+We characterize this as **systematic degradation on domains the instruct model already handled well**,
 concentrated in a couple of specific repositories, rather than either a uniform capability loss or an
 isolated one-repository anomaly. This degradation, not a general capability gap, is the dominant
 contributor to the raw 42-point base-vs-best-arm difference: restricting to a "clean" 301-instance
 subset (excluding all repositories touched by training-data overlap for *any* arm, including
-`sympy`), the base model's advantage over the best arm shrinks to a statistically non-significant +10
+`sympy`), the instruct model's advantage over the best arm shrinks to a statistically non-significant +10
 (76 vs. 66, McNemar p = 0.30). **We do not find a significant general improvement in single-attempt
 resolve rate from fine-tuning on this benchmark, and we find a significant, repository-concentrated
 loss of pre-existing solve-rate that is not attributable to contamination** (§2.7 discusses why this
@@ -274,7 +275,8 @@ combination experiments in §2.5–2.6.
 ### 2.5 Combining models by weight averaging
 
 Since all four arms are fine-tuned from the same initialization, each defines a **task vector**
-τᵢ = θᵢ − θ₀ (the displacement from the shared base checkpoint θ₀). We decompose each task vector into
+τᵢ = θᵢ − θ₀ (the displacement from the shared starting checkpoint θ₀, i.e. the instruct model). We
+decompose each task vector into
 a shared component and an arm-specific residual: τᵢ = s + rᵢ, where s is the mean of the four task
 vectors and rᵢ = τᵢ − s is what remains for arm i (by construction, the four residuals sum to zero).
 
@@ -282,7 +284,7 @@ Measuring this decomposition: all four task vectors have nearly identical norms 
 model's parameter space), and each is only weakly aligned with the others (pairwise cosine similarity
 0.20–0.26 — well above what unrelated random directions would produce, but far from parallel). The
 shared direction s captures only **65% of a typical arm's norm** (‖s‖ / mean‖τᵢ‖ = 0.646), meaning
-each arm's residual rᵢ carries roughly 75–78% of that arm's total displacement from the base model —
+each arm's residual rᵢ carries roughly 75–78% of that arm's total displacement from the instruct model —
 a large amount of arm-specific structure that a *simple average* of the four task vectors necessarily
 discards, since the residuals cancel out of an unweighted mean by construction. Breaking the
 comparison down by model component shows this shared/residual split is not uniform across the network:
@@ -291,13 +293,13 @@ format/tool-use adaptation), while the attention and MLP layers — where task-s
 presumably learned — are far less aligned (cosine ≈ 0.10–0.11), most divergent in early layers.
 
 This geometry makes a specific, testable prediction: an equal-weight average of the four fine-tuned
-models' weights should retain roughly 65% of a typical arm's total displacement from the base model
+models' weights should retain roughly 65% of a typical arm's total displacement from the instruct model
 (the shared component), but discard essentially all of each arm's residual, arm-specific capability.
 The results confirm this:
 
-| combination | resolved / 500 | vs. base model | vs. best single arm |
+| combination | resolved / 500 | vs. instruct model | vs. best single arm |
 |---|---:|---|---|
-| base model | **119** | — | — |
+| instruct model | **119** | — | — |
 | best single arm (`swezero`) | 77 | — | — |
 | best soup found (average of the two strong-tier arms only) | 62 | significantly below (p < 10⁻⁴) | significantly below (p = 0.014, clean subset) |
 | equal-weight average of all four arms | 50 | significantly below (p < 10⁻⁴) | significantly below (p = 0.0016) |
@@ -305,18 +307,18 @@ The results confirm this:
 The equal-weight average of all four arms' weights lands in the **weak tier** — statistically
 indistinguishable from the two weakest single arms, and significantly below both strong-tier arms
 (swezero: p = 0.0016; rebench: p = 0.025). Restricting the average to just the two strong-tier arms
-recovers somewhat but is still well below the best individual arm and far below the base model.
+recovers somewhat but is still well below the best individual arm and far below the instruct model.
 
 We further tested scaling the shared direction alone, θ(α) = θ₀ + α·s, for α ranging from 0.7 to 2.0
 (α = 1 is the equal-weight average above; α ≈ 1.55 restores the *norm* of a typical single arm along
 this one direction, though not its actual residual direction). Resolve rate **decreases monotonically**
 as α increases past roughly 0.7 (54 → 50 → 38 → 19 for α = 0.7, 1.0, 1.55, 2.0). Since α = 0 recovers
-the base model by definition (119), the entire measured curve sits below the base model, and pushing
+the instruct model by definition (119), the entire measured curve sits below the instruct model, and pushing
 further along the shared direction only makes things worse. This indicates the shortfall is not a
 matter of *magnitude* — simply rescaling the merged model does not recover lost performance — but a
 genuine loss of the residual, arm-specific directions that a weight average necessarily cancels out.
 **No weight-space combination we tried recovers the performance of the best single arm, let alone the
-base model.**
+instruct model.**
 
 ### 2.6 Combining models by joint training
 
@@ -325,24 +327,24 @@ all four sources directly. We trained two such models: one on a data-matched poo
 what all four arms trained on, 4× a single arm's data budget) and one on a compute-matched pool (the
 same total training budget as one arm, spread across all four sources).
 
-| model | training data | resolved / 500 | vs. base model | vs. best single arm |
+| model | training data | resolved / 500 | vs. instruct model | vs. best single arm |
 |---|---|---:|---|---|
-| base model | — | 119 | — | — |
+| instruct model | — | 119 | — | — |
 | best single arm | 55K, one source | 77 | — | — |
 | joint-trained, compute-matched | 55K, all four sources | 46 | significantly below (p < 10⁻⁴) | significantly below (p = 4×10⁻⁴) |
 | joint-trained, data-matched | 220K, all four sources | 54 | significantly below | — |
 
-Neither pooled model beats the base model or the best single-source arm. The data-matched model (4×
+Neither pooled model beats the instruct model or the best single-source arm. The data-matched model (4×
 the data of the compute-matched one) gains only 8 additional resolved instances despite quadrupling the
 training data, and lands close to the equal-weight *weight-averaged* soup (50) from §2.5 — training
 jointly on the pooled data and averaging separately-trained models after the fact land in
 approximately the same place. **Combining the four data sources — whether by weight averaging or by
 joint training, at either data budget we tested — does not recover the performance lost relative to
-the base model, nor does it beat the strongest single-source arm.**
+the instruct model, nor does it beat the strongest single-source arm.**
 
 ### 2.7 Why does fine-tuning underperform? A mechanistic case study
 
-To understand *why* fine-tuning underperforms the base model, we audited every instance the base
+To understand *why* fine-tuning underperforms the instruct model, we audited every instance the
 model solves but the strongest arm (`swezero`) does not (82 instances). In every one of these 82
 cases, the fine-tuned model's submitted patch is syntactically valid and applies cleanly to the
 repository — none are empty, malformed, or the product of an early, incomplete termination. The
@@ -351,16 +353,17 @@ underlying bug (misdiagnosis).
 
 Looking at overall episode behavior confirms a systematic behavioral shift, not a broken model:
 
-| | base model | fine-tuned arm (`swezero`) |
+| | instruct model | fine-tuned arm (`swezero`) |
 |---|---:|---:|
 | episodes reaching a final answer | 207 / 500 | 500 / 500 |
 | episodes ending with an empty patch | 138 / 500 | 0 / 500 |
 | mean agent actions per episode | ~171 | ~92 |
 
 The fine-tuned model is *more* compliant with the agent scaffold in every respect measured here — it
-always finishes, it always produces a patch, and it does so in about half as many steps as the base
-model. But this comes at a cost: relative to the base model, the fine-tuned arm gains 40 newly-solved
-instances the base model missed, while losing 82 the base model had — a net loss of 42. We interpret
+always finishes, it always produces a patch, and it does so in about half as many steps as the
+instruct model. But this comes at a cost: relative to the instruct model, the fine-tuned arm gains 40
+newly-solved instances the instruct model missed, while losing 82 the instruct model had — a net
+loss of 42. We interpret
 this as **fine-tuning shifting the model's policy from a slower, more exploratory, "messier"
 problem-solving style toward a faster, tidier, more scaffold-compliant one that is quicker to settle on
 an answer and less likely to keep investigating a wrong initial diagnosis.**
@@ -368,7 +371,7 @@ an answer and less likely to keep investigating a wrong initial diagnosis.**
 This reframes the headline result: it is not that fine-tuning made the model unconditionally worse,
 but that it moved the model along a depth-vs-compliance trade-off, and the specific evaluation
 protocol used throughout this report — a single deterministic attempt per instance, scored only on
-whether the final patch resolves the issue — rewards the base model's deeper (if less efficient and
+whether the final patch resolves the issue — rewards the instruct model's deeper (if less efficient and
 less reliably-terminating) exploration. A different protocol — for example, allowing multiple attempts
 per instance, or an evaluation that penalizes non-termination more heavily — could plausibly favor the
 fine-tuned behavior instead. The result reported throughout this study should be read as **"fine-tuning
@@ -439,7 +442,7 @@ uses merge coefficients (or task-vector geometry more generally) as a cheap prox
 data-mixing ratio would produce for a subsequent joint-training run — an idea our joint-training
 comparison (§2.6) speaks to directly: at the two data budgets we tested, joint training on pooled data
 did not outperform weight averaging, so — at least in this setting — neither combination strategy
-recovers what separate single-source training achieves, let alone the base model.
+recovers what separate single-source training achieves, let alone the instruct model.
 
 ---
 
@@ -458,7 +461,7 @@ recovers what separate single-source training achieves, let alone the base model
   §1.3/§2.3 excludes entire repositories with any known training/evaluation overlap for any arm; a
   fully instance-exact audit for every source has not been completed.
 - **The mechanistic explanation in §2.7 is a case study, not yet a controlled experiment.** The
-  patch-level audit compares one arm against the base model; it has not been replicated across all
+  patch-level audit compares one arm against the instruct model; it has not been replicated across all
   four arms, and the proposed curation ablation to test the hypothesized cause causally has not been
   run.
 - **Cross-campaign comparisons (§2.8) cross different infrastructure** and are explicitly flagged as
