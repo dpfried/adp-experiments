@@ -234,6 +234,21 @@ single patch: 6,383 files). All arms also show ~15× base's rate of *rejected*
 `file_editor` calls (median 20 vs 1) — `str_replace` against text that isn't in
 the file — and roughly double its duplicate-action fraction.
 
+⚠️ **`patch files` overstates deliberate editing.** SWE-bench captures the patch
+with `git add -A`, so it sweeps up things the agent never authored: `core.<pid>`
+dumps from its own crashes, and untracked `build/` trees already present in the
+image. Reading four of these patches: rebench's 667-file `django-9296` patch is
+663 files of `.eggs/` downloaded by `python setup.py test`; pooled55k's 31-file
+`xarray-3151` patch is 24 core dumps; and the 67-file/16k-line
+`psf__requests-1142` patch is a pre-existing `build/lib/requests/**` tree that
+appears **identically in base's patch for the same instance**. Deliberate source
+edits are far fewer than the file counts imply — for coderforge's 11-file
+sklearn patch, exactly 1 was a source file, the same as base. The counts above
+are still the right measure of *what the grader sees*, which is what §4d is
+about, but they should not be read as "the model edited 10 files."
+`patch_debris_files` / `patch_source_files` split these; the debris-corrected
+per-arm table is not yet computed.
+
 **Bloat predicts failure, but does not explain the gap.** Conditioning on patch
 size:
 
