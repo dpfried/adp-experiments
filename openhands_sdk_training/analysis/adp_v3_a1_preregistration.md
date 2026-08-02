@@ -608,3 +608,46 @@ consistent with slow or timeout-prone suites.
 
 *Caveat:* the 6.1% upper figure rests on a comparison against a union-scored run; the
 defensible number is the clean **5**. Both are reported rather than the flattering one.
+
+---
+
+## 13. Correction — the val-loss curves are NOT comparable to the control (2026-08-02)
+
+_Caught ~3h into training, before any eval existed. Affects a secondary metric only._
+
+§2 states:
+
+> **Eval carve-out:** the matched v2 arm's `eval.llamafactory.jsonl`, shared by absolute
+> path, so in-training val-loss curves are directly comparable.
+
+**The second clause is false.** Verified from the control's own
+`all_results.json`, whose only eval metrics are:
+
+```
+eval_v2_id_mix_loss, eval_v2_swegym_ood_loss
+```
+
+and from its tokenized-cache name,
+`tokenized_qwen35_4b_inst_seq32768_ev_v2_id_mix-v2_swegym_ood`. The v2 control was
+evaluated on **`v2_id_mix` + `v2_swegym_ood`**, not on the per-arm `eval.llamafactory.jsonl`
+carve-out the v3 arms use as `arm_eval`. Pointing both v3 arms at the same file makes the
+**two v3 arms** comparable to each other — it does **not** make either comparable to the
+control, which never measured that set.
+
+**Impact: none on the primary result.** SBV pass@1 is the pre-registered primary metric and
+is unaffected; val loss was always labelled secondary. The observed numbers stand on their
+own terms — v3 train loss ~0.22–0.24 vs the control's ~0.34 at matched steps (expected:
+condensation records are high-entropy prose, trajectory records are structured tool calls),
+and `arm_eval` drifting up (0.4378 → 0.4451 tokmatch, 0.4368 → 0.4637 maxpool) is the
+intentional OOD effect §2 predicted, since that carve-out is mixed while the arms train
+pure. **What cannot be done is reading those against the control's 0.34/0.326.**
+
+**Cheap remedy, if a val-loss comparison is wanted:** after training, run a loss-only pass
+of {control, A1-tokmatch, A1-maxpool} over one common eval set (minutes on 1 GPU, no
+retraining). Not required for the headline; recorded so the option is not forgotten.
+
+**Root cause, for future kits:** `generate_v3_runs.py` defaults `--eval-set` to
+`arm_eval=eval.llamafactory.jsonl`, inherited from the v2 generator — but the v2 *runs*
+overrode that default with two named sets. The default looked like the control's
+configuration and was not. Worth checking the comparison target's actual `all_results.json`
+rather than the generator default next time.
