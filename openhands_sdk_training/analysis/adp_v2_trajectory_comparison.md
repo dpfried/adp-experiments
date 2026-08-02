@@ -17,9 +17,14 @@ Tools: `analysis/traj_compare/` (extractor + dashboard).
 
 ## 1. Headline
 
-SFT did not make the agent worse at *finding* the bug. It removed the agent's
-habit of *checking its own work*, and replaced it with text that says the work
-was checked.
+For **this pair**, SFT did not make the agent worse at *finding* the bug. It
+removed the agent's habit of *checking its own work*, and replaced it with text
+that says the work was checked.
+
+> Read §4 before generalising. Measured across all ten remaining arms, swezero
+> is a behavioural **outlier**: every other arm verifies at base-like rates and
+> still loses to base. The verification collapse explains this pair; it does
+> **not** explain the SFT-lift inversion.
 
 | | base (300 with history) | swezero (500) |
 |---|---|---|
@@ -104,28 +109,109 @@ capability-specific collapse and overstates a general one.** A reader who sees
 only "119 → 77" would infer uniform degradation; the arm is in fact
 indistinguishable from base on the largest repo slice.
 
-## 4. Two explanations tested
+### Train/eval repo overlap — a retracted claim
 
-**Repo composition — refuted.** The obvious hypothesis (the SFT data is
-django-heavy) is false. Scanning all 79,874 training records for workspace paths:
-the top repos are pandas, ivy, spyder, numpy, bokeh, qiskit, mne-python, MONAI,
-modin, dbt-core, mypy, dvc. **Zero overlap with SWE-bench Verified's repos** —
-no django, no sympy, no scikit-learn. (Incidentally: no contamination either.)
+⚠️ **An earlier draft of this document asserted "zero repo overlap, no
+contamination." That was wrong**, and it is corrected here. The check had scanned
+only the *top 30* training repos; swezero's set has **8,518 distinct** ones.
+Full intersection against the 12 SWE-bench Verified repos:
 
-**Demonstration style — supported, within this arm.** From the existing
-training-data audit (`v2_sft_action_analysis.json`), `nvidia_SWE-Zero`
-demonstrations average **15.0 assistant turns**, run a test in only **27.6%** of
-trajectories, and **end on an edit in 55.2%** (`pct_edit_last3`, the highest of
-the four arms). The eval-time policy is a close match to the demonstration
-policy: short, edit-terminated, unverified. The model learned the *form* of the
-trajectories, and that form omits the verification loop.
+| SBV repo | records | versions seen |
+|---|---|---|
+| `sympy__sympy` | 257 | 0.7, 1.0, 1.3, 1.5, 1.13 |
+| `pydata__xarray` | 77 | 0.10, 0.12, 0.16, 2023.08, 2024.02 |
+| `sphinx-doc__sphinx` | 35 | 1.7, 1.8, 2.1, 2.2, 7.2 |
+| `astropy__astropy` | 30 | 2.0, 3.2, 6.0, 6.1 |
+| `mwaskom__seaborn` | 15 | 0.12, joss_paper |
+| **total** | **414 / 79,874 = 0.52%** | **5 of 12 SBV repos** |
 
-⚠️ **This does not generalise across arms and should not be stated as a law.**
-swezero has the *lowest* training test-rate (27.6%) of the four arms yet is the
-*best* arm (77); rebench and coderforge sit at ~58% and score 70 and 48. Test
-rate in the demonstrations does not order the arms. The claim I can support is
-the within-arm correspondence between swezero's demonstrations and swezero's
-learned policy — not a causal ranking rule.
+Absent: django, scikit-learn, matplotlib, pytest, pylint, flask, requests.
+(Loose substring matching is what produced the error in the first place — the
+"django"/"pytest"/"sphinx" hits are django-cms, pytest-asyncio, sphinx-gallery,
+i.e. different repos.) This **confirms** the 2026-07-25 data-composition audit
+and keeps `clean-301`'s justification as a decontamination board intact.
+
+Two scope notes. First, this is **repo-level** overlap at 0.52%, across
+*different versions*; instance/issue-level contamination was **not** tested, so
+nothing here says the arms saw the test instances. Second, the direction is the
+opposite of contamination-inflation: swezero trained on 257 sympy records and
+collapsed on sympy anyway. The consequence for this document is that the sympy
+collapse **cannot** be attributed to "the model never saw sympy" — that
+inference is withdrawn. The observation itself (29 → 3) is unaffected.
+
+## 4. Scope: swezero is a behavioural outlier, not the SFT norm
+
+⚠️ **Correction to an earlier draft of this document, which generalised from
+n=1.** Running the same extractor over all ten remaining v2 arms falsifies
+"SFT removes the verification loop" as a general statement:
+
+| arm | score | verify-after-edit | ran any test | median turns |
+|---|---|---|---|---|
+| base | 119 | 74.3% | 90.3% | 246 |
+| **swezero** | **77** | **6.2%** | **16.6%** | **66** |
+| rebench | 70 | 67.9% | 100% | 206 |
+| soup_top2 | 62 | 45.5% | 96.2% | 168 |
+| pooled220k | 54 | 66.6% | 100% | 176 |
+| soup_a0p7 | 54 | 63.3% | 96.5% | 240 |
+| soup_uniform4 | 50 | 56.6% | 98.8% | 196 |
+| coderforge | 48 | **72.8%** | 99.8% | 197 |
+| pooled55k | 46 | 67.1% | 100% | 224 |
+| soup_a1p55 | 38 | 46.6% | 98.8% | 152 |
+| scale | 35 | **70.3%** | 99.8% | 211 |
+| soup_a2p0 | 19 | 41.4% | 97.2% | 142 |
+
+Every other arm verifies at base-like rates and **still loses to base badly**.
+Across the 11 SFT/soup arms, r(verify%, score) = **−0.28** and
+r(ran-any-test%, score) = **−0.54** — if anything negative.
+
+**So the verification collapse is a property of swezero, not the mechanism of
+the SFT-lift inversion.** Whatever makes every arm lose to base is not captured
+by these behavioural measures: coderforge and scale behave most like base and
+score worst (48, 35). §1 stands as a description of the base→swezero pair and
+should not be read as explaining the board.
+
+## 4b. Where the behaviour does come from: the training data
+
+Same metrics, computed on the SFT trajectories themselves
+(`extract_train_stats.py`, sharing the eval extractor's taxonomy). Reported
+per **segment** (what the model actually sees as an example) and per
+**source trajectory** (segments reassembled — records carry
+`trajectory_segment_index`).
+
+| arm | segs/traj | verify% seg | verify% traj | any-test% seg | any-test% traj |
+|---|---|---|---|---|---|
+| **swezero** | 1.63 | **0.1** | **0.1** | **0.4** | **0.7** |
+| rebench | 2.65 | 31.3 | 59.5 | 57.3 | 88.0 |
+| coderforge | 1.82 | 40.6 | 60.8 | 60.1 | 79.9 |
+| scale | 2.31 | 29.6 | 53.6 | 52.2 | 80.1 |
+
+Two findings:
+
+**(a) Learned behaviour tracks demonstrated behaviour, 4/4, in level and rank.**
+
+| arm | train verify% | eval verify% | train any-test% | eval any-test% |
+|---|---|---|---|---|
+| swezero | 0.1 | 6.2 | 0.7 | 16.6 |
+| rebench | 59.5 | 67.9 | 88.0 | 100.0 |
+| coderforge | 60.8 | 72.8 | 79.9 | 99.8 |
+| scale | 53.6 | 70.3 | 80.1 | 99.8 |
+
+swezero's demonstrations essentially never verify — **0.7% of its 49,030 source
+trajectories run any test at all**, against 80–88% for the other three. Its eval
+policy is inherited, not emergent. Eval rates sit slightly above training rates
+in every case, consistently.
+
+**(b) Segmentation roughly halves the verification the model is shown.** For the
+three arms whose source trajectories do verify, chopping into 1.8–2.65 segments
+per trajectory drops visible verify-after-edit from 53–61% to 30–41%, because
+the test run and the edit it validates land in different training examples. That
+is a conversion-pipeline effect worth fixing independently — but it is **not**
+swezero's problem, whose source trajectories don't verify either.
+
+⚠️ **None of this predicts score.** swezero has by far the worst training data on
+these measures and is the *best* arm. The supported chain is
+demonstration-style → learned policy. It stops there; it does not reach
+resolve-rate.
 
 ## 5. Harness artifact worth fixing
 
