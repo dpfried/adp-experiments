@@ -532,3 +532,79 @@ That reasoning is valid **conditional on the eval actually being deterministic**
   upper-ish bound from a confounded comparison, not an estimate. A ~50-instance base
   re-run (~1 GPU-hour) would measure it directly and remains the cheapest way to size the
   effect if a borderline result makes it matter.
+
+---
+
+## 12. Amendment 6 — the GRADER is nondeterministic too (2026-08-02, measured)
+
+_dpf asked whether the alternative explanations in §11 — (b) incomplete merge, (c) test
+flakiness — were real. Both were checked. **(b) is refuted. (c) is confirmed and
+quantified.** Filed while both arms were still training, before any eval existed._
+
+### (b) Merge integrity — REFUTED, board is structurally sound
+
+All 23 instances resolved in the single run but not in `init_4b` are **scored as
+unresolved** in `init_4b`; **0 are absent**. The merge was complete, so the flips are
+real label changes, not missing shards.
+
+Campaign-wide check of every `score_*/merged.report.json`:
+
+| check | result |
+| --- | --- |
+| board reports with union of resolved+unresolved = 500 | **13 / 13** |
+| declared `total` = 500 | 13 / 13 |
+| duplicate ids | **0** |
+| missing ids | **0** |
+| resolved ∩ unresolved overlap | 0 |
+
+(The only partial report is `score_smoke10_inst4b`, a 10-instance smoke — not a board
+number.) **No incomplete merges anywhere in the campaign.**
+
+### (c) Scoring flakiness — CONFIRMED: the grader flips labels on byte-identical patches
+
+Method: hash each instance's final `git_patch` in both base runs, keep instances whose
+patch is identical, and compare the resolved/unresolved label.
+
+| quantity | value |
+| --- | --- |
+| instances compared | 500 |
+| identical patch in both runs | 207 (180 non-empty) |
+| **identical non-empty patch, labels DISAGREE** | **11 / 180 = 6.1%** |
+| different patch | 293 (61 label disagreements, 20.8%) |
+| total label disagreement, same model | **72 / 500** — 61 generation, 11 scoring |
+
+**Direction split (removes the union confound).** `init_4b` unions over attempts, so
+"union=resolved, single=unresolved" could be a *different* attempt succeeding. Only the
+opposite direction is clean:
+
+* **CLEAN — 5 instances:** `init_4b` = **unresolved** (no attempt resolved) while the
+  single run with a **byte-identical patch** = **resolved**. A union cannot explain this.
+  `pytest-dev__pytest-6202`, `scikit-learn__scikit-learn-13496`, `sympy__sympy-20154`,
+  `sympy__sympy-21379`, `sympy__sympy-21847`.
+* AMBIGUOUS — 6 instances in the other direction.
+
+**⇒ Grading nondeterminism is ≥5/180 (≈2.8%) of identical-patch instances, ≈1% of the
+500-board; upper estimate 11 (6.1%).** Concentrated in sympy / pytest / scikit-learn,
+consistent with slow or timeout-prone suites.
+
+### Consequences
+
+1. **~5–11 instances of the board can move with the model's output unchanged.** That is a
+   third to two-thirds of the campaign's entire stated ~15/500 noise floor, and it was
+   previously unaccounted for. It compounds §11: the floor is **not** a single-run
+   artifact of generation sampling — part of it is the grader.
+2. **This is irreducible by re-running the model.** Multi-seed averages generation noise
+   (§11) *and* grading noise, so seeds still help — but a "deterministic decode" would
+   not have removed it.
+3. **Small deltas are less meaningful than the paired stats imply.** A ±5/500 difference
+   between two arms is inside the grader's own flip range. Combined with §11's point that
+   McNemar assumes fixed per-instance outcomes, **the ~15/500 floor should be read as a
+   lower bound.**
+4. **For A1:** the arms will be scored in a fresh pass while the v2 control's labels come
+   from an older pass, so grader drift sits *between* treatment and control. Where
+   feasible the control's stored rollouts should be **re-scored in the same pass** as A1
+   so both sides see the same harness state. This does not remove per-run flakiness, but
+   it removes systematic drift between passes.
+
+*Caveat:* the 6.1% upper figure rests on a comparison against a union-scored run; the
+defensible number is the clean **5**. Both are reported rather than the flattering one.
