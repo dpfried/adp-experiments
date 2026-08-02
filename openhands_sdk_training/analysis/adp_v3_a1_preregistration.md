@@ -308,3 +308,106 @@ recompute and kernel efficiency — so treat it as order-of-magnitude, direction
 
 **This does not change the headline choice.** A ~1.11× residual is far more interpretable
 than maxpool's ~1.46×, and running both still brackets the answer.
+
+---
+
+## 9. Amendment 3 — devils-advocate + soup-worker review (2026-08-02)
+
+_Filed at arm launch (jobs 330140 / 330141), **before either arm produced a checkpoint and
+before any eval existed**. Records a confound that neither §7 nor §8 priced correctly, and
+the statistical posture the campaign is actually committing to._
+
+### 9.1 The action-data confound — priced, and the disambiguating arm defined
+
+@devils-advocate's load-bearing objection: dropping condensation and refilling to a budget
+**necessarily changes how much action data the model sees**, so a positive A1 has an
+unpriced alternative explanation — *"the extra action trajectories helped"* — independent
+of anything about condensation.
+
+Exact numbers for swezero (Phase-0 prefix census). The control's 55,000 records decompose
+into **36,040 trajectory + 18,968 condensation**. So, in action records seen:
+
+| arm | action records | vs control | tokens vs control |
+| --- | --- | --- | --- |
+| control | 36,040 (+18,968 cond) | — | 1.00× |
+| **A1-tokmatch (headline)** | 39,829 | **+3,789 (+10.5%)** | 1.00× |
+| A1-maxpool | 52,473 | +16,433 (+45.6%) | 1.32× |
+
+Amendment 1's token-matching **substantially shrinks but does not remove** this confound:
+the headline arm sees +10.5% more action data, not the +45.6% a record-matched design
+would have given. Worth stating that the confound is smaller than devils-advocate's
+worst case, and still real.
+
+**A useful structural property:** because selection is first-N in file order and the
+control's action records are exactly the trajectory records inside the first 55,000, the
+three arms are **exact nested prefixes**:
+
+```
+36,040  ⊂  39,829  ⊂  52,473
+(control's own      (tokmatch)      (maxpool)
+ action records)
+```
+
+**Pre-registered attribution and the gated third arm.** A positive A1 is attributable to
+**{condensation-removal OR extra-action-data}** and will be reported that way, not as
+condensation alone. To disambiguate, a third arm is **pre-defined now and gated on a
+positive A1** (per devils-advocate's cost discipline — do not spend it on a null):
+
+* **A1-subtract** = exactly the control's own **36,040** action records, condensation
+  deleted, nothing added (~1,127 steps, ~0.90× control tokens). Action content is held
+  *identical* to the control, so `control vs A1-subtract` isolates **condensation removal
+  at fixed action content** — the cleanest form of the actual question. Its own caveat:
+  at 0.90× tokens it is compute-*under*-matched, so a null there could be condensation-
+  removal-helped cancelling against less-compute-hurt.
+* `A1-subtract → tokmatch → maxpool` is then a **dose-response curve on action quantity at
+  zero condensation**, which separates the two factors that A1 alone conflates.
+
+No single two-arm comparison here is unconfounded. The nested series is what makes the
+decomposition possible.
+
+### 9.2 Statistical posture — corrected again, by soup-worker
+
+@soup-worker (owner of `paired_compare.py`) corrected **both** §8.1 and the peer consensus.
+main-worker, devils-advocate and I had all converged on "widen the margin toward ±15–20 to
+match precedent". That is **backwards**:
+
+> TOST declares equivalence iff the 90% CI ⊂ ±margin. Half-width = 1.645·SE. With 122
+> discordant pairs, SE ≈ √122/500 ≈ 11/500, so even a **perfectly null** result gives a
+> 90% CI of ±1.645·11 ≈ **±18/500**.
+
+So the structural impossibility I "fixed" at ±15 in §8.1 was merely moved out a notch — the
+instrument's floor is ~±18/500. **But inflating the margin to whatever the instrument can
+resolve hides the underpowering rather than fixing it.**
+
+**Committed posture (final):**
+* **Margin stays ±15/500** — a defensible scientific line ("we care about effects ≥3%"),
+  deliberately *not* inflated to match the instrument.
+* A single 500-instance run reports **different / inconclusive only**. **"Equivalent" is
+  out of reach at N=500 regardless of margin** and will not be claimed. n.s. ≠ equivalent.
+* **McNemar@500 is powered for effects ≳4% (≳20/500).** Worked example at the expected
+  split (122 discordant, ~73/49): z ≈ 2.17, p ≈ 0.03 — detectable. Below ~20/500, expect
+  inconclusive.
+* **Multi-seed is NOT the escalation.** At temp-0 the discordant pairs are *structural
+  model disagreement, not sampling noise* — re-running reproduces the same labels, so SE
+  does not shrink. The only lever is **more instances**. ⚠️ **Action: confirm the eval is
+  actually temp-0 deterministic before relying on this**; if it is stochastic in practice
+  (flaky infra flipping pass/fail), multi-seed *does* help (4 seeds ≈ SE/2 ≈ 5.5/500).
+
+### 9.3 Two Lever-B constraints recorded now (pre-GPU, cheap to honour)
+
+* **B2 (gold-patch distillation) is a train-on-test hazard and is hard-gated.** Phase 0
+  established that `(repo, base_commit)` recovers from ~100% of records. Reconstructing
+  trajectories to *end in the gold patch* on any instance overlapping SWE-bench Verified
+  is literally SFT-on-the-eval-answer. v2 closed contamination at **repo** level, which is
+  fine when not training on the label — B2 trains on the label. **B2 requires an EXACT
+  (repo, base_commit) exclusion of all 500 SBV instances, not repo-level.** Same caution,
+  lighter, for B-ii replay labels. Additionally, **rebench is the safer source for B1/B2**
+  (decontaminated by design); swezero carries the SBV-overlapping repos
+  (astropy/sympy/xarray/sphinx/seaborn).
+* **B1 ("resolved-only") filters on OUTCOME, not DEPTH.** A resolved trajectory can still
+  be shallow-tidy (a shallow fix is correct when the bug *was* shallow), and resolved
+  trajectories over-represent **easier** instances the upstream agent could solve →
+  distribution shift toward easy bugs. So H-B1 ("verification recovers depth") is **not
+  mechanically entailed** by the filter; B1 could raise the score via easy-instance
+  imitation with depth flat. Keep H-B1 hypothesis-voiced and let the **depth diagnostics**,
+  not the /500, adjudicate the mechanism.
