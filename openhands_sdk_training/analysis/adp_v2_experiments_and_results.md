@@ -362,13 +362,26 @@ same total training budget as one arm, spread across all four sources).
 | instruct model | — | 119 | — | — |
 | best single arm | 55K, one source | 77 | — | — |
 | joint-trained, compute-matched | 55K, all four sources | 46 | significantly below (p < 10⁻⁴) | significantly below (p = 4×10⁻⁴) |
-| joint-trained, data-matched | 220K, all four sources | 54 | significantly below | — |
+| joint-trained, data-matched | 220K, all four sources | 54 | significantly below (p < 10⁻⁴) | — |
 
-Neither pooled model beats the instruct model or the best single-source arm. The data-matched model (4×
-the data of the compute-matched one) gains only 8 additional resolved instances despite quadrupling the
-training data, and lands close to the equal-weight *weight-averaged* soup (50) from §2.5 — training
-jointly on the pooled data and averaging separately-trained models after the fact land in
-approximately the same place. **Combining the four data sources — whether by weight averaging or by
+Neither pooled model beats the instruct model or the best single-source arm; the data-matched model is
+significantly below the instruct model on every board tested (−65/500 and −65/456, p < 10⁻⁴; −37/301 on
+the decontaminated board, p < 10⁻⁴).
+
+Two comparisons that are *not* resolvable at this sample size, and which we therefore decline to state
+as equivalences: 4× the training data (55K → 220K) buys **+8 resolved instances (p = 0.34)**, and the
+data-matched joint-trained model sits **+4 above the equal-weight weight-averaged soup** from §2.5
+(50 → 54, p = 0.69). Both are well inside the noise floor of §1.3, so the honest reading is
+"indistinguishable at n = 500," *not* "data scaling is flat" and *not* "joint training and weight
+averaging land in the same place" — those are equivalence claims, and as noted in §1.3 a
+non-significant result does not establish equivalence. (In fact equivalence is structurally
+unreachable on a single 500-instance run here: with ~120 discordant pairs the standard error is
+≈11/500, so even a *perfectly* null result yields a 90% confidence interval of roughly ±18/500 —
+wider than any margin one would want to call "equivalent." Only more instances, not more seeds, would
+tighten this; at temperature 0 the discordant pairs are structural disagreement between two
+deterministic models, not sampling noise that re-running would average away.)
+
+**What the board does support: combining the four data sources — whether by weight averaging or by
 joint training, at either data budget we tested — does not recover the performance lost relative to
 the instruct model, nor does it beat the strongest single-source arm.**
 
@@ -484,7 +497,11 @@ uses merge coefficients (or task-vector geometry more generally) as a cheap prox
 data-mixing ratio would produce for a subsequent joint-training run — an idea our joint-training
 comparison (§2.6) speaks to directly: at the two data budgets we tested, joint training on pooled data
 did not outperform weight averaging, so — at least in this setting — neither combination strategy
-recovers what separate single-source training achieves, let alone the instruct model.
+recovers what separate single-source training achieves, let alone the instruct model. We stress that
+this is a "did not outperform," not a demonstration that the two are interchangeable: the merge-vs-joint
+gap here (+4/500) is simply too small to resolve at this sample size (§2.6), so our data neither
+validates nor refutes the merge-as-proxy-for-data-mixing idea — it only shows both landed well short of
+the starting checkpoint.
 
 ---
 
