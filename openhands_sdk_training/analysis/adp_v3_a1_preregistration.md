@@ -651,3 +651,101 @@ retraining). Not required for the headline; recorded so the option is not forgot
 overrode that default with two named sets. The default looked like the control's
 configuration and was not. Worth checking the comparison target's actual `all_results.json`
 rather than the generator default next time.
+
+---
+
+## 14. Amendment 7 — variance decomposition and scope of the underpowering claim (2026-08-02)
+
+_devils-advocate's review of §11–§12. Two of the three are corrections to me. Filed while
+both arms were still training, before any eval existed._
+
+### 14.1 §11 conflated two variance components
+
+§11 concluded that because the eval is stochastic, "multi-seed IS a valid escalation" and
+withdrew the "more instances is the only lever" line. **That framing was loose.** There are
+two additive, non-interchangeable components:
+
+| component | source | shrinks with |
+| --- | --- | --- |
+| **instance-sampling variance** | evaluating a finite 500-instance draw of the benchmark | **more instances** |
+| **run-noise variance** | the stochastic decode established in §11 | **more seeds**, as ~1/√k |
+
+soup-worker's SE ≈ 11/500 was measuring the *instance-sampling* term. Seeds do not touch
+it. So §11's "k=4 ⇒ SE ≈ 5.5/500 and equivalence becomes declarable" holds **only under a
+fixed-500 estimand** — and under that estimand the ±15 instance-sampling floor was never
+the applicable floor in the first place.
+
+**Corrected statement:** seeds and instances attack **different terms**; you now have *two
+levers for two variance components*, not one lever that substitutes for the other. Which
+applies depends on the estimand:
+
+* **"pass-rate on these fixed 500"** → run-noise dominates; seeds are the lever.
+* **"pass-rate on SWE-bench-Verified as a population"** → the instance-sampling term
+  remains; **k=4 alone will not get a population comparison to 5.5/500.** Both levers needed.
+
+Every comparison in this campaign should state which estimand it is making.
+
+### 14.2 The scope of "more underpowered" — it does NOT touch the headline
+
+§11 point 3 said "every paired comparison in this campaign is MORE underpowered than
+reported". True, but **the scope was left too broad, and left that way it invites a reader
+to discount the p<1e-10 spine.** The correction:
+
+Symmetric run-noise inflates **both** McNemar discordant cells (b and c) roughly equally.
+That grows the denominator of (b−c)²/(b+c) while leaving the numerator roughly unchanged,
+so **the statistic shrinks and McNemar becomes MORE CONSERVATIVE** at detecting a true
+difference.
+
+⇒ **DIFFERENT verdicts are if anything SAFER under stochastic eval, not weaker.** A gap
+that clears the bar *despite* inflated discordance is robust. So:
+
+* **Unaffected (robust):** base 119 ≫ every arm; pooled220k −65/500 vs base; the whole
+  p<1e-10 spine.
+* **Genuinely at risk:** borderline/near-tie comparisons and any equivalence reading —
+  i.e. exactly the inconclusive band this document already refuses to quote.
+
+The underpowering bites the **inconclusive band, not the headline.**
+
+### 14.3 §10's FLOP measurement is downgraded to provisional
+
+§10's step-time medians for the v3 arms rest on **n=5–7 early steps**. Step time can drift
+with later sequence composition and eval interleaving. Restated as **"early-step
+measurement, +1.6% against 1.38× tokens/record, to be confirmed at full n"** rather than
+settled. §10 already committed to re-verifying; this makes the provisional status explicit
+in the claim itself. The qualitative conclusion (step time did not scale with tokens, so
+the FLOP-ratio framing does not describe this system) is what the n=339 control median
+supports.
+
+### 14.4 Multi-seed stays gated
+
+Accepted: do not let an unsized 23-instance figure become a board-wide k=4 program. The
+pre-registered order is **size the flip rate first** (~50-instance base re-run, ~1 GPU-h),
+*then* decide whether seeds are worth it. If the flip rate is small, this is a caveat, not
+a re-run programme.
+
+### 14.5 New asymmetric noise source (main-worker) — adopted into A1 practice
+
+200/500 **base** rollouts stored no history; decomposed, **44 are pure infrastructure**
+(20 disk-full, 16 four-hour-timeout, 8 one-hour-timeout) and resolved **0** between them.
+swezero: **0 error records, 500/500 clean.**
+
+⇒ **θ₀ = 119 is a depressed floor, not a clean measurement of base capability**, and the
+depression is **one-sided** (the arm had none). Direction is conservative for the headline
+— base already wins and repairing it would only widen base's margin — but "119" should not
+be quoted as clean.
+
+**Adopted for A1:** count error/no-history records in **both** arms' `output.jsonl` before
+running the panel, and report them alongside the scores, so a lopsided infra-failure count
+cannot be misread as a capability gap.
+
+### 14.6 Repo-overlap contradiction — settled, clean-301 keeps its label
+
+Two artifacts disagreed on whether swezero overlaps SBV repos. Settled full-file
+(`v3_scoping/repo_overlap.py`, 100% extraction, 0 misses): **overlap EXISTS and is exactly
+the five the 2026-07-25 audit named** — sympy 157 records, xarray 50, sphinx 26,
+astropy 19, seaborn 4 = **256 records = 0.49%** of swezero's 52,473, against 1,501 distinct
+training repos. The competing "zero overlap" claim was a top-N view that missed the tail.
+
+⇒ **`clean-301` retains its decontamination justification in both public docs — it is not a
+mislabel.** And the sympy collapse (29→3) is *not* a training-repo-mix artifact: 157
+records cannot produce it, and the direction is wrong (training on a repo should help).
