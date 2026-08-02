@@ -213,6 +213,158 @@ these measures and is the *best* arm. The supported chain is
 demonstration-style → learned policy. It stops there; it does not reach
 resolve-rate.
 
+## 4c. The other arms: a different failure mode entirely
+
+swezero fails by *quitting*. Every other arm fails by *flailing*. Medians:
+
+| arm | score | turns | tests | patch files | lines added | rejected edits | dup-action frac |
+|---|---|---|---|---|---|---|---|
+| base | 119 | 246 | 28 | **1** | **14** | **1** | 0.26 |
+| swezero | 77 | 66 | 0 | 1 | 11 | 4 | 0.46 |
+| rebench | 70 | 206 | 32 | **10** | **562** | 20 | 0.45 |
+| pooled220k | 54 | 176 | 24 | 8 | 460 | 13 | 0.44 |
+| soup_uniform4 | 50 | 196 | 19 | 4 | 166 | 14 | 0.46 |
+| coderforge | 48 | 197 | 26 | 2 | 70 | 20 | 0.44 |
+| pooled55k | 46 | 224 | 28 | 7 | 380 | 16 | 0.41 |
+| scale | 35 | 211 | 31 | 7 | 287 | 11 | 0.33 |
+
+Base ships a **1-file, 14-line** patch. rebench ships **10 files and 562 lines**;
+73% of its patches touch more than 5 files and 15.6% touch more than 20 (worst
+single patch: 6,383 files). All arms also show ~15× base's rate of *rejected*
+`file_editor` calls (median 20 vs 1) — `str_replace` against text that isn't in
+the file — and roughly double its duplicate-action fraction.
+
+**Bloat predicts failure, but does not explain the gap.** Conditioning on patch
+size:
+
+| arm | 1 file | 2–5 files | 6–20 files | 21+ files |
+|---|---|---|---|---|
+| **base** | **43.9%** (98) | **39.6%** (101) | **29.6%** (27) | — |
+| rebench | 21.2% (33) | 25.0% (100) | 11.6% (285) | 6.5% (77) |
+| pooled220k | 23.5% (34) | 19.5% (128) | 7.3% (286) | 0.0% (52) |
+| pooled55k | 14.5% (55) | 14.7% (136) | 7.4% (243) | 0.0% (59) |
+| coderforge | 10.8% (157) | 8.7% (241) | 14.5% (69) | 0.0% (21) |
+| scale | 13.4% (82) | 8.9% (135) | 5.7% (193) | 1.1% (88) |
+| swezero | 17.7% (362) | 10.3% (126) | — | — |
+
+Resolve rate falls monotonically with patch size inside every model — but base
+beats every arm **2–4× at matched patch size**. Bloat is a real contributor to
+the arms' spread; it is not why they lose to base.
+
+**Their verification is real but far less productive.** Adding a check that the
+test command actually executed (output present, no `ModuleNotFoundError` /
+`command not found` signature) shows the arms genuinely run tests — my earlier
+guess that they were testing into a broken environment was wrong:
+
+| arm | ran a test that executed | verified-ok after last edit | resolve if verified | resolve if not |
+|---|---|---|---|---|
+| base | 89.3% | 71.7% | **41.9%** | 3.5% |
+| swezero | 7.6% | 2.8% | 21.4% (n=14) | 15.2% |
+| rebench | 99.8% | 58.2% | 17.4% | 9.7% |
+| pooled220k | 97.4% | 50.2% | 13.5% | 8.0% |
+| coderforge | 98.0% | 54.5% | 11.8% | 7.1% |
+| pooled55k | 98.0% | 51.4% | 11.8% | 6.6% |
+| scale | 97.0% | 49.1% | 9.8% | 4.3% |
+
+Verifying helps *within every model* — for base it is the difference between
+41.9% and 3.5%, a 12× swing, and it is the strongest single predictor found
+anywhere in this analysis. But the arms verify at 49–58% (against base's 72%)
+and convert a verification into a resolution only ~1/3 as often.
+
+**So the deficit is not whether they verify; it is that their verification is
+much less informative.** Read together with §4, SFT preserved the *form* of the
+check-your-work loop in every arm except swezero, while degrading its
+*substance*. What makes base's checks informative and the arms' checks
+comparatively inert is not settled by these counts.
+
+### Pooling behaves exactly as a mixture should
+
+Training-data verification against learned behaviour, now with the pooled arms
+(format control: swezero parsed from both the OpenAI and llamafactory files
+gives 0.1% / 0.7% either way, so these are comparable):
+
+| arm | train verify% | train any-test% | eval verify% | score |
+|---|---|---|---|---|
+| swezero | 0.1 | 0.7 | 6.2 | 77 |
+| pooled55k | 28.0 | 45.5 | 67.1 | 46 |
+| pooled220k | 35.7 | 53.2 | 66.6 | 54 |
+| scale | 53.6 | 80.1 | 70.3 | 35 |
+| rebench | 59.5 | 88.0 | 67.9 | 70 |
+| coderforge | 60.8 | 79.9 | 72.8 | 48 |
+
+Pooling swezero with the other three lifts its 0.1% to 28–36%, and the pooled
+models' behaviour lands with the majority, not with swezero. The
+training→eval mapping is monotone but **strongly saturating**: ~28% verification
+in the demonstrations already buys base-like verification behaviour, and only
+swezero's near-total absence (0.1%) collapses it. Score remains unordered by
+any of these columns.
+
+## 4d. ⚠️ A harness bug that silently reverts patches — biased against the arms
+
+Found by reading arm trajectories, then verified directly against the scorer and
+the on-disk apply logs. **This is the most actionable finding in this document.**
+
+`benchmarks/swebench/apptainer_eval.py:190` tries three commands and breaks on
+the first that exits 0:
+
+```bash
+for cmd in "git apply --verbose /mnt/patch.diff" \
+           "git apply --verbose --reject /mnt/patch.diff" \
+           "patch --batch --fuzz=5 -p1 -i /mnt/patch.diff"; do
+  if bash -lc "$cmd" >> "$apply_output" 2>&1; then applied=1; break; fi
+done
+```
+
+Model patches are produced by plain `git diff` (no `--binary`), so any binary
+file in the patch — overwhelmingly `core.<pid>` dumps from the agent's own
+crashes — appears as `Binary files ... differ`. Then:
+
+1. `git apply` aborts atomically: `cannot apply binary patch to 'core.1031'
+   without full index line`.
+2. `git apply --reject` **applies the real source fix** ("Applied patch
+   xarray/core/variable.py cleanly") but exits non-zero on the binary rejects,
+   so the loop does not break.
+3. `patch --batch --fuzz=5 -p1` sees the hunks already applied, reports
+   `Reversed (or previously applied) patch detected! Assuming -R`, **reverts the
+   fix**, and exits 0 → `applied=1`.
+
+The instance is then scored against a pristine repo while the report records the
+patch as applied successfully. Verified end-to-end on
+`score_v2_rebench_4b/reports_1of40/pydata__xarray-4356`: `git_diff_before.diff`
+is **0 bytes**.
+
+Counting apply logs containing the reversal message:
+
+| model | apply logs | reversed | rate | a real `.py` fix was discarded |
+|---|---|---|---|---|
+| base (single-run) | 319 | 11 | **3.4%** | 11 |
+| swezero | 458 | 3 | **0.7%** | 2 |
+| coderforge | 410 | 29 | 7.1% | 29 |
+| rebench | 440 | 55 | **12.5%** | 55 |
+| pooled55k | 447 | 62 | **13.9%** | 60 |
+
+**The bias is systematic and runs against the arms**, because the arms crash far
+more and so emit far more core dumps: rebench and pooled55k are hit ~4× more
+often than base. In essentially every reversed case a real source `.py` file had
+been applied cleanly immediately before being reverted.
+
+**What this does and does not change.** It does **not** overturn base ≫ arms:
+the differential is ~9–10pp of instances (~45–52 of 500), and those patches come
+from arms whose baseline resolve rate is ~10–15%, so the recoverable score is
+plausibly single digits against a 42–73 point gap. It is an **upper bound, not a
+recovered-score estimate** — most of those instances would have failed anyway.
+But it is a genuine defect that (a) makes every arm number a slight
+underestimate, (b) is *not* symmetric between conditions, and (c) is cheap to
+fix and cheap to test, because the raw patches are already on disk.
+
+**Recommended fixes**, in order: strip untracked binary/debris (`core.*`,
+`build/`, `*.pyc`) from the model patch before applying; drop the
+`patch --fuzz` fallback, or require `--reject` to leave no `.rej` files rather
+than treating a non-zero exit as failure; and re-score the existing rollouts —
+no GPU, no new inference. Worth doing **before A1 is scored**, though note A1 is
+swezero-derived and swezero's reversal rate is only 0.7%, so A1 is likely the
+least affected arm.
+
 ## 5. Harness artifact worth fixing
 
 200/500 base rollouts stored **no history** (they carry an `error` and, in 131

@@ -98,14 +98,48 @@ def thinking_len(ev):
                 n += len(b)
     return n
 
+# A test command whose output shows the interpreter/env is broken never produced
+# a real verification signal, however many times it was issued.
+BROKEN_ENV_RE = re.compile(
+    r"ModuleNotFoundError|ImportError|No module named|command not found|"
+    r"cannot import name|ERROR: file or directory not found|No such file or directory|"
+    r"Bus error|Segmentation fault|core dumped|Killed|MemoryError", re.I)
+# Repo test files the task instructions tell the agent not to modify.
+TESTPATH_RE = re.compile(r"(^|/)(tests?|testing)/")   # repo test trees only
+SCRATCH_TEST_RE = re.compile(r"^(test_[^/]*|.*_test)\.py$")  # root-level scratch
+# Files a patch can contain that the agent never authored: core dumps from its own
+# crashes, and untracked build trees already present in the image.
+DEBRIS_RE = re.compile(r"(^|/)core\.\d+$|(^|/)build/|\.pyc$|\.so$|\.egg-info/|(^|/)\.pytest_cache/")
+# The eval image can expose the repo at two paths; editing the non-graded one
+# means a correct fix never reaches the patch.
+TESTBED_RE = re.compile(r"^/testbed/")
+WORKSPACE_RE = re.compile(r"^/workspace/")
+
+
+def patch_paths(p):
+    return re.findall(r"^diff --git a/(\S+)", p or "", re.M)
+
+
 def patch_stats(p):
     if not p:
-        return dict(patch_len=0, patch_files=0, patch_added=0, patch_removed=0, patch_hunks=0)
+        return dict(patch_len=0, patch_files=0, patch_added=0, patch_removed=0, patch_hunks=0,
+                    patch_touches_tests=False, patch_test_files=0, patch_root_scratch=0,
+                    patch_debris_files=0, patch_source_files=0)
     files = len(re.findall(r"^diff --git ", p, re.M))
     add = len([l for l in p.splitlines() if l.startswith("+") and not l.startswith("+++")])
     rem = len([l for l in p.splitlines() if l.startswith("-") and not l.startswith("---")])
     hunks = len(re.findall(r"^@@ ", p, re.M))
-    return dict(patch_len=len(p), patch_files=files, patch_added=add, patch_removed=rem, patch_hunks=hunks)
+    paths = patch_paths(p)
+    tf = [x for x in paths if TESTPATH_RE.search(x)]
+    scratch = [x for x in paths if "/" not in x and x.endswith(".py")]
+    # Not everything in a patch was written by the agent: `git add -A` sweeps up
+    # crash dumps and pre-existing untracked build trees from the image.
+    debris = [x for x in paths if DEBRIS_RE.search(x)]
+    src = [x for x in paths if x not in set(debris) and x not in set(scratch)
+           and x.endswith((".py", ".pyx", ".rst", ".txt", ".cfg", ".toml"))]
+    return dict(patch_len=len(p), patch_files=files, patch_added=add, patch_removed=rem, patch_hunks=hunks,
+                patch_touches_tests=bool(tf), patch_test_files=len(tf), patch_root_scratch=len(scratch),
+                patch_debris_files=len(debris), patch_source_files=len(src))
 
 TOOLS = ("terminal", "file_editor", "think", "finish")
 
@@ -200,10 +234,19 @@ def analyse(rec, model, resolved_ids):
             err_obs += 1
 
     # --- shell / editor behaviour ------------------------------------------
+    obs_for = {}
+    for e in obs:
+        if e.get("tool_call_id"):
+            obs_for[("tc", e["tool_call_id"])] = e
+        if e.get("action_id"):
+            obs_for[("act", e["action_id"])] = e
+
     cmdcat = collections.Counter()
     edcat = collections.Counter()
     test_turns, edit_turns, view_turns = [], [], []
+    test_ok_turns = []          # test runs that actually executed (env not broken)
     files_edited, files_viewed = set(), set()
+    edited_testbed, edited_workspace = set(), set()
     repro_created = False
     for i, e in enumerate(actions):
         tn = _s(e.get("tool_name"))
@@ -215,6 +258,12 @@ def analyse(rec, model, resolved_ids):
                 cmdcat[x] += 1
             if "test" in cats or ("pyrun" in cats and re.search(r"repro|test", c)):
                 test_turns.append(i)
+                o = obs_for.get(("tc", e.get("tool_call_id"))) or obs_for.get(("act", e.get("id")))
+                t = obs_text(o) if o is not None else ""
+                # counts only if something actually ran: non-empty output with no
+                # broken-interpreter signature
+                if t and not BROKEN_ENV_RE.search(t[:3000]):
+                    test_ok_turns.append(i)
         elif tn == "file_editor":
             sub = _s(a.get("command")) or "?"
             edcat[sub] += 1
@@ -223,6 +272,10 @@ def analyse(rec, model, resolved_ids):
                 edit_turns.append(i)
                 if path:
                     files_edited.add(path)
+                    if TESTBED_RE.match(path):
+                        edited_testbed.add(path)
+                    elif WORKSPACE_RE.match(path):
+                        edited_workspace.add(path)
                 if sub == "create" and re.search(r"repro|test_|/tmp/", path):
                     repro_created = True
             elif sub == "view":
@@ -232,6 +285,8 @@ def analyse(rec, model, resolved_ids):
 
     last_edit = max(edit_turns) if edit_turns else None
     verified_after_edit = bool(last_edit is not None and any(t > last_edit for t in test_turns))
+    # the same check, but only crediting test runs that actually executed
+    verified_ok_after_edit = bool(last_edit is not None and any(t > last_edit for t in test_ok_turns))
 
     # --- degeneration signatures ------------------------------------------
     obs_by_tc = {e.get("tool_call_id"): e for e in obs if e.get("tool_call_id")}
@@ -306,10 +361,14 @@ def analyse(rec, model, resolved_ids):
         ed_undo=edcat.get("undo_edit", 0),
         n_test_runs=len(test_turns), n_edits=len(edit_turns),
         n_files_edited=len(files_edited), n_files_viewed=len(files_viewed),
+        n_edited_testbed=len(edited_testbed), n_edited_workspace=len(edited_workspace),
+        edited_wrong_tree=bool(edited_testbed and not edited_workspace),
         first_edit_turn=(min(edit_turns) if edit_turns else None),
         last_edit_turn=last_edit,
         verified_after_edit=verified_after_edit,
         ran_any_test=bool(test_turns), repro_created=repro_created,
+        n_test_ok_runs=len(test_ok_turns), ran_any_test_ok=bool(test_ok_turns),
+        verified_ok_after_edit=verified_ok_after_edit,
         failed_edits=failed_edits, failed_cmds=failed_cmds,
         corrupt_turns=corrupt_turns, env_activated=env_activated,
         finish_claims_success=finish_claims_success,

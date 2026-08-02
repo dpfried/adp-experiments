@@ -45,7 +45,44 @@ def _args(tc):
 
 
 def calls_of(messages):
-    """Flatten to an ordered list of (tool_name, args, result_text)."""
+    """Flatten to an ordered list of (tool_name, args, result_text).
+
+    Handles BOTH ADP output formats:
+      openai_chat_completions : role=assistant with .tool_calls[], role=tool results
+      llamafactory            : role=function_call whose .content is a JSON list of
+                                {name, arguments}, followed by role=tool results
+    (`pooled*` subsets ship only the llamafactory form.)
+    """
+    if any(m.get("role") == "function_call" for m in messages):
+        out, pending = [], []
+        for m in messages:
+            role = m.get("role")
+            if role == "function_call":
+                c = m.get("content")
+                try:
+                    calls = json.loads(c) if isinstance(c, str) else c
+                except Exception:
+                    calls = []
+                if isinstance(calls, dict):
+                    calls = [calls]
+                for cc in (calls or []):
+                    if not isinstance(cc, dict):
+                        continue
+                    a = cc.get("arguments")
+                    if isinstance(a, str):
+                        try:
+                            a = json.loads(a)
+                        except Exception:
+                            a = {"_raw": a}
+                    pending.append((cc.get("name") or "", a if isinstance(a, dict) else {}))
+            elif role == "tool":
+                if pending:
+                    name, a = pending.pop(0)
+                    out.append((name, a, m.get("content") or ""))
+        for name, a in pending:          # trailing calls with no recorded result
+            out.append((name, a, ""))
+        return out
+
     results = {}
     for m in messages:
         if m.get("role") == "tool" and m.get("tool_call_id"):
