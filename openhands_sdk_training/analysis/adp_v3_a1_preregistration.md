@@ -467,3 +467,68 @@ learning-relevant compute either. **To re-verify with full n once both arms fini
 the completed-run medians diverge from this, this section gets corrected again rather than
 quietly kept. What is already solid is the qualitative point: step time did **not** scale
 with tokens/record, so §8.3's FLOP-ratio framing does not describe this system.
+
+---
+
+## 11. Amendment 5 — the eval is NOT reproducible; §9.2's escalation advice is reversed (2026-08-02)
+
+_Filed while both arms were still training, **before any eval existed**. This reverses a
+recommendation recorded in §9.2 and widens the campaign's stated noise floor._
+
+### What §9.2 assumed
+
+§9.2 recorded soup-worker's argument that **multi-seed is not the escalation** at temp-0:
+
+> the discordant pairs in a temp-0 deterministic eval are structural disagreement between
+> the two models, not sampling noise — re-running reproduces the same labels, so SE does
+> not shrink. The only lever is more instances.
+
+That reasoning is valid **conditional on the eval actually being deterministic**. It is not.
+
+### Evidence that it is not
+
+1. **dpf (2026-08-02):** *"I don't think it will be exactly reproducible given cuda
+   non-determinism even with temp 0."*
+2. **The serving path is nondeterministic by construction.** The eval runs vLLM with
+   `--enable-prefix-caching` under continuous batching. Batch composition varies run to
+   run, which changes float reduction order; at a near-tie that flips an argmax. In an
+   agentic loop a single flipped token cascades into a different trajectory. Confirmed
+   `"temperature": 0.0` in the OpenHands LLM config — greedy, but greedy ≠ reproducible.
+3. **Observed label instability between the two base runs.** `v2_init_4b` (145) is a
+   documented **best-of-3 union** (pass@3 artifact from a timeout + catch-up rerun);
+   `v2_init_singlerun_4b` (119) is the verified single run. A union can only *add*
+   resolutions, yet **23 instances are resolved in the single run and absent from the
+   union** (96 concordant, 49 union-only). *Caveat, stated:* this is confounded — it could
+   be genuine rollout variation, a different shard/scoring pass, or SWE-bench
+   **test-execution** flakiness on identical patches. It was not decomposed (dpf accepted
+   the premise, so no GPU was spent proving it). It is corroborating, not decisive.
+
+### Consequences — three, and the third is the uncomfortable one
+
+1. **Multi-seed IS a valid escalation.** If labels flip run to run, repeated rollouts
+   average real noise and SE *does* shrink (~SE/√k). §9.2's "more instances is the only
+   lever" is **withdrawn**; more instances and more seeds are both valid, and seeds are
+   cheaper than sourcing new instances.
+2. **Equivalence may be reachable after all** — with k seeds, SE ≈ 11/√k per 500, so
+   k=4 gives ≈5.5/500 and a ±15 TOST becomes declarable. §9.2 said equivalence was
+   structurally out of reach at N=500; that holds for a *single* run only.
+3. **⚠️ Every paired comparison in this campaign is MORE underpowered than reported, not
+   less.** McNemar and the SE ≈ √(discordant)/500 calculation both treat each instance's
+   outcome as a *fixed property* of the model. If the outcome is itself stochastic, some
+   of the observed discordance is run noise rather than model disagreement, and the true
+   SE is **larger** than √(discordant)/500. So the campaign's ~15/500 noise floor is
+   plausibly **optimistic**, and borderline calls are weaker than their p-values suggest.
+   This applies retroactively to the v2 board and to the pooled220k panel, not just to A1.
+
+### What this changes for A1 (committed now, pre-result)
+
+* The margin stays **±15/500** and single-run verdicts stay **different / inconclusive**.
+* **If A1 lands inside the noise band, the escalation is a second seed on both arms**
+  (not more instances), and that is now the pre-registered response rather than an
+  improvised one.
+* Any A1 verdict is reported with **"single-run; eval is not bitwise reproducible"**
+  attached. A near-threshold p-value will not be treated as decisive.
+* **Unmeasured:** the *magnitude* of run-to-run flipping. The 23-instance figure is an
+  upper-ish bound from a confounded comparison, not an estimate. A ~50-instance base
+  re-run (~1 GPU-hour) would measure it directly and remains the cheapest way to size the
+  effect if a borderline result makes it matter.
