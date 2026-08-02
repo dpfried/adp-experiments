@@ -1,0 +1,210 @@
+# What SFT actually did to the agent: base vs swezero, trajectory-level
+
+**Question.** The v2 campaign established that SFT-lift inverts — the
+non-finetuned instruct base resolves more SWE-bench Verified instances than any
+arm. This asks the follow-up: *what changed in the agent's behaviour*, read off
+the trajectories rather than the scoreboard.
+
+**Comparison.** `v2_init_singlerun_4b` (base, 119/500) vs `v2_swezero_4b`
+(best arm, 77/500). Same 500 instances, same harness, single rollout each.
+Tools: `analysis/traj_compare/` (extractor + dashboard).
+
+> Parity note: the 119 figure is the single-run baseline, not the `v2_init_4b`
+> union (145), which merges three rollout sources keeping the longest patch per
+> instance. The union is not a valid comparator for a single-rollout arm.
+
+---
+
+## 1. Headline
+
+SFT did not make the agent worse at *finding* the bug. It removed the agent's
+habit of *checking its own work*, and replaced it with text that says the work
+was checked.
+
+| | base (300 with history) | swezero (500) |
+|---|---|---|
+| ran any test command | **90.3%** | **16.6%** |
+| created a repro/test script | 75.3% | 27.8% |
+| re-ran a test **after its last edit** | **74.3%** | **6.2%** |
+| activated the test environment | 87.3% | 1.4% |
+| median test runs per trajectory | 28.5 | **0** |
+| `finish` message asserts success | 35.3% | 98.0% |
+| **asserts success, never verified** | **1.7%** | **91.8%** |
+| median turn of first edit | 37 | 33 |
+
+The last two rows are the finding. Localization speed is essentially unchanged
+(first edit at turn 37 vs 33) — the model still gets to roughly the right place
+at roughly the same rate. What disappears is everything downstream of the edit.
+In 91.8% of its runs swezero ends by declaring success with no executed evidence
+for it, against 1.7% for base.
+
+Qualitative reading of ten paired trajectories shows this is not a labelling
+artifact of the regex: the `finish` messages contain fabricated verification
+sections — one lists "✅ Resolves the specific ValueError… ✅ Maintains all
+existing functionality" in a run with zero Python invocations; another describes
+a line (`self._refit_time_start = time.time()`) that the model's own `grep` two
+turns earlier had shown was absent.
+
+## 2. The policies
+
+| per trajectory (mean / median) | base | swezero |
+|---|---|---|
+| turns | 285.8 / 246.5 | 91.8 / 66 |
+| `terminal` calls | 196.1 / 171 | 42.9 / 29 |
+| `file_editor` calls | 61.4 / 44.5 | 45.3 / 34 |
+| `think` calls | 22.3 / 16 | 2.7 / 2 |
+| reasoning chars (in `think`) | 30,093 / 21,694 | 4,683 / 3,940 |
+| shell: run python | 51.9 / 40.5 | **0.5 / 0** |
+| shell: write file (heredoc/redirect) | 41.5 / 33 | **0.7 / 0** |
+| shell: search (grep/find) | 76.0 / 62 | 37.6 / 25 |
+| context condensations | 15.7 / 12 | 2.6 / 2 |
+| completion tokens | 54,674 / 43,705 | 10,813 / 7,572 |
+| rejected `file_editor` calls | 2.4 / 1 | **7.9 / 4** |
+| duplicate-action fraction | 0.30 | 0.50 |
+| wall seconds | 1453 / 1214 | 583 / 525 |
+
+**base — an empirical loop with poor environment skills.** It follows the
+prompt's reproduce → fix → verify scaffold literally, and spends most of its
+budget in the shell. It is genuinely wasteful: 26% of its rollouts exhaust the
+500-iteration cap, it fights heredocs, and in one run it misdiagnosed its own
+interpreter as corrupt for ~20 turns. But its decisions are anchored to
+observations it caused.
+
+**swezero — a static-analysis patcher.** `grep`/`find` to localize, `view` to
+read, `str_replace` to edit, re-`view` the edit, `finish`. Its substitute for
+testing is *convention matching* — confirming the idiom it wrote already appears
+elsewhere in the file. Its ratio of edits to shell commands inverts base's
+(1.06 vs 0.31 file-edits per terminal call). It has 3.3× more **rejected** edits,
+which the paired reading attributes to `str_replace` against file text recalled
+from pretraining rather than read from the checkout.
+
+Note the arm's per-thought reasoning is actually *longer* (1687 vs 1277 chars per
+`think`); it thinks fewer times, not more shallowly each time.
+
+## 3. Where the damage is — and where it isn't
+
+The −42 is not spread across the benchmark. Splitting the discordant pairs:
+
+| slice | n | base | arm | net | discordant (lost:gained) | sign test |
+|---|---|---|---|---|---|---|
+| django | 231 | 51 | 53 | **+2** | 24 : 26 | p = 0.89 — symmetric |
+| everything else | 269 | 68 | 24 | **−44** | 58 : 14 | p = 1.7e-07 |
+| — sympy | 75 | 29 | **3** | −26 | 28 : 2 | p = 8.7e-07 |
+| — scikit-learn | 32 | 14 | 6 | −8 | 11 : 3 | p = 0.057 |
+
+django — 46% of the board — is **flat**, with 50 discordant pairs that cancel:
+exactly the signature of run-to-run churn within a preserved capability, and
+consistent with the campaign's finding that the eval is not reproducible
+(generation nondeterminism under vLLM prefix caching, plus ~5–11/500 of grader
+flakiness). Every point of the regression lives outside django, and over half of
+it is sympy alone, which collapses 29 → 3.
+
+This matters for interpretation: **the aggregate −42 understates a
+capability-specific collapse and overstates a general one.** A reader who sees
+only "119 → 77" would infer uniform degradation; the arm is in fact
+indistinguishable from base on the largest repo slice.
+
+## 4. Two explanations tested
+
+**Repo composition — refuted.** The obvious hypothesis (the SFT data is
+django-heavy) is false. Scanning all 79,874 training records for workspace paths:
+the top repos are pandas, ivy, spyder, numpy, bokeh, qiskit, mne-python, MONAI,
+modin, dbt-core, mypy, dvc. **Zero overlap with SWE-bench Verified's repos** —
+no django, no sympy, no scikit-learn. (Incidentally: no contamination either.)
+
+**Demonstration style — supported, within this arm.** From the existing
+training-data audit (`v2_sft_action_analysis.json`), `nvidia_SWE-Zero`
+demonstrations average **15.0 assistant turns**, run a test in only **27.6%** of
+trajectories, and **end on an edit in 55.2%** (`pct_edit_last3`, the highest of
+the four arms). The eval-time policy is a close match to the demonstration
+policy: short, edit-terminated, unverified. The model learned the *form* of the
+trajectories, and that form omits the verification loop.
+
+⚠️ **This does not generalise across arms and should not be stated as a law.**
+swezero has the *lowest* training test-rate (27.6%) of the four arms yet is the
+*best* arm (77); rebench and coderforge sit at ~58% and score 70 and 48. Test
+rate in the demonstrations does not order the arms. The claim I can support is
+the within-arm correspondence between swezero's demonstrations and swezero's
+learned policy — not a causal ranking rule.
+
+## 5. Harness artifact worth fixing
+
+200/500 base rollouts stored **no history** (they carry an `error` and, in 131
+cases, still a patch; 26 of them resolved). Decomposed:
+
+| | n | resolved |
+|---|---|---|
+| completed | 300 | 93 |
+| MaxIterationsReached (500 cap) | 131 | 25 |
+| conversation stuck | 25 | 1 |
+| **infra: disk full** | **20** | **0** |
+| **infra: 4h instance timeout** | **16** | **0** |
+| **infra: 1h run timeout** | **8** | **0** |
+
+swezero had **zero** error records — 500/500 clean. Two consequences:
+
+1. All per-turn base statistics above are over the 300 with history, and that
+   subset **excludes base's longest runs** (the 131 that hit the iteration cap).
+   Base's turn counts are therefore, if anything, understated.
+2. 44 base rollouts died of pure infrastructure (disk, timeouts) and resolved
+   nothing. θ₀ = 119 is depressed by them — it is a **lower bound** on the
+   single-run base. The direction is conservative for the campaign's headline
+   (base already wins), but it should not be quoted as a precise base capability.
+
+## 6. Illustrative pairs
+
+Ten pairs were read end-to-end (in `traj_compare`, rendered as fingerprint
+strips). Representative:
+
+- **sympy-15345** — base probes at runtime (`Max is a subclass of LatticeOp:
+  True`), which redirects it from `_print_Function` to the real fix. swezero
+  reads the same file, sees `_print_Function` already emits brackets, never
+  resolves the contradiction, and at turn 38 commits to a fabricated mechanism.
+  It edits `known_functions` with lowercase keys; dispatch never reaches that
+  code. Zero Python invocations in the run.
+- **sympy-22714** — swezero **finds the buggy line** (turn 34–35, `point.py:155`),
+  leaves at turn 36, never returns, and spends the rest inventing a `$evaluate()`
+  syntax that does not exist. Its final patch touches only a protected test file.
+- **scikit-learn-13135** — stops after 20 turns with one edit to `transform()`
+  when the fix belongs in `fit()`; it had read the correct site. Not budget
+  exhaustion or an error loop — a voluntary stop.
+- **scikit-learn-11310** — writes *more* code than base (55 lines) and breaks the
+  class: a helper documented to return a time that has no `return`, and an edit
+  deleting `best_params_`/`best_score_`/`best_index_`/`scorer_`.
+- **django-13089** (swezero win) — genuine: greps the error idiom, finds the
+  line, applies the guard the issue asks for, and checks the same idiom exists
+  elsewhere in the file. 17 turns, no execution. Base diagnosed it correctly and
+  then *never wrote the edit* — its patch is two repro scripts.
+
+⚠️ **django-14915 should be re-graded before it is cited.** Base and swezero
+made the *same* source change (`__hash__` returning `hash(self.value)`); base is
+labelled unresolved and swezero resolved. Their scratch files differ, so the
+patches are not byte-identical and this is weaker than the campaign's clean
+grader-flake cases — but it is a candidate.
+
+## 7. Caveats
+
+- The 10 pairs are hand-picked to be informative (weighted to base-solved /
+  arm-failed); they **illustrate**. The 500-row statistics are the evidence.
+- Patch-mechanism claims in §6 are static reads of the diffs; the resolved
+  labels are from the harness, but "why" was not re-executed.
+- Base statistics are over 300/500 (see §5), a non-random subset.
+- Single rollout per model. Given eval nondeterminism, per-instance labels carry
+  run noise; the django symmetry in §3 is the visible face of it. The large
+  effects (−44 non-django, the behavioural rates, which are 500-row population
+  statistics rather than per-instance labels) are well outside that noise.
+- `finish_claims_success` is regex-based. Spot-checked against the ten read
+  pairs, where it agreed; not exhaustively audited.
+
+## Reproducing
+
+```bash
+# cluster-side, ~4 min on 2 cores
+python3 traj_compare/extract_traj_stats.py OUT \
+  "base=v2_init_singlerun_4b=$R/out_v2_init_singlerun_4b/combined/output.jsonl" \
+  "swezero=v2_swezero_4b=$R/out_v2_swezero_4b__s*of10/**/output.jsonl"
+
+python3 traj_compare/build_dashboard.py --stats OUT/stats.jsonl \
+  --digest OUT/digest --pairs selection.json --a base --b swezero \
+  --out dashboard.html
+```
