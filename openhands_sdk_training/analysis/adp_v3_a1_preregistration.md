@@ -411,3 +411,59 @@ resolve hides the underpowering rather than fixing it.**
   mechanically entailed** by the filter; B1 could raise the score via easy-instance
   imitation with depth flat. Keep H-B1 hypothesis-voiced and let the **depth diagnostics**,
   not the /500, adjudicate the mechanism.
+
+---
+
+## 10. Amendment 4 — the "~11% compute tailwind" in §8.3 is wrong, measured (2026-08-02)
+
+_Filed ~40 min into training, **before any checkpoint, eval or result existed**. This
+corrects a claim I made in §8.3 and repeated in §9 — it was an analytic estimate, and the
+measurement disagrees with it._
+
+§8.3 estimated A1-tokmatch at **~1.11× the control's FLOPs** and told the reader to treat
+a positive result as *"better data with a ~11% compute tailwind"*. Measured per-step wall
+time says that framing is misleading.
+
+**Measurement** (median seconds/optimizer-step, from each run's own `trainer_log.jsonl`,
+same 8×A100 recipe, steps ≥15 to exclude warmup):
+
+| run | mean tokens/record | median s/step | IQR | n |
+| --- | --- | --- | --- | --- |
+| v2 swezero mixed (control) | 15,500 | **25.20** | 25.00–25.40 | 339 |
+| v3 A1-maxpool | 21,406 | **25.60** | 25.40–26.00 | 7 |
+| v3 A1-tokmatch | 21,406 | **25.60** | 25.40–25.60 | 5 |
+
+**Step time is flat (+1.6%) despite 1.38× more tokens per record.** At
+`per_device_train_batch_size: 1` with gradient checkpointing, a single ~15–21k-token
+sequence does not saturate an A100; the step is dominated by fixed costs (optimizer step,
+the all-reduce over 4.2B params, recompute scheduling) rather than by token-proportional
+matmul. So theoretical FLOPs are simply not the binding resource here, and a FLOP ratio is
+the wrong currency for "did this arm get more compute".
+
+**Corrected accounting for A1-tokmatch vs the control:**
+
+| axis | A1-tokmatch vs control | direction |
+| --- | --- | --- |
+| tokens seen | 1.0000× (852.50 M vs 852.52 M) | matched |
+| optimizer steps | 1,245 / 1,719 = **0.72×** | **fewer updates** |
+| measured GPU-time | ~8.9 h / ~12.0 h ≈ **0.74×** | **less compute** |
+| theoretical FLOPs | ~1.11× | slightly more |
+
+**So the headline arm is not advantaged on any practical axis.** It is matched on tokens
+and *disadvantaged* on optimizer steps and on actual GPU-seconds; the only axis on which
+it leads is a theoretical FLOP count that the hardware demonstrably does not bill for.
+**Replace "a positive A1-tokmatch comes with a ~11% compute tailwind" with: a positive
+A1-tokmatch is obtained at matched tokens, ~28% fewer optimizer updates and ~26% less
+GPU-time than its control** — which makes a win *harder* to explain away as compute, not
+easier, and strengthens the headline arm rather than weakening it.
+
+The symmetric consequence for the secondary arm: **A1-maxpool's 1.32× token advantage also
+costs ~1.32× the wall-clock** (1,640 × 25.6 s ≈ 11.7 h), so its extra data is real extra
+training. Its confound (§9.1) stands unchanged.
+
+**Caveats, stated:** the v3 medians rest on n=5–7 early steps (the IQRs are tight, and the
+control's n=339 median is stable at 25.20), and step time is not a perfect proxy for
+learning-relevant compute either. **To re-verify with full n once both arms finish** — if
+the completed-run medians diverge from this, this section gets corrected again rather than
+quietly kept. What is already solid is the qualitative point: step time did **not** scale
+with tokens/record, so §8.3's FLOP-ratio framing does not describe this system.
