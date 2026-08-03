@@ -380,6 +380,40 @@ no GPU, no new inference. Worth doing **before A1 is scored**, though note A1 is
 swezero-derived and swezero's reversal rate is only 0.7%, so A1 is likely the
 least affected arm.
 
+### 4d-bis. The re-score was run. Result: the ordering does NOT invert, but it collapses to a tie
+
+265 reverted instances across 8 models were re-scored with debris stripped from
+the scorer's **input** (shared kit untouched; new `*_nodeb` tags). All 265
+scored, no attrition.
+
+| arm | original | recovered | **corrected** |
+|---|---|---|---|
+| base (single-run) | 119 | 0 | **119** |
+| swezero | 77 | 0 | **77** |
+| rebench | 70 | **+6** | **76** |
+| pooled220k | 54 | +3 | 57 |
+| pooled55k | 46 | +6 (−1 already-resolved) | 51 |
+| soup_uniform4 | 50 | +1 | 51 |
+| coderforge | 48 | +2 | 50 |
+| scale | 35 | +1 | 36 |
+
+**swezero 77 vs rebench 76.** The predicted inversion did not happen — but the
+gap goes from 7 instances to **1**, which is far inside the grader-flake band
+(~5–11/500) and the noise floor (~15/500). The defensible conclusion is not
+"rebench overtakes swezero" but **"swezero and rebench are not separable, and
+'swezero is the top arm' should not be treated as an established ordering."**
+That is the same practical consequence for anything resting on that ranking.
+
+Calibration note on my own estimate: I predicted rebench would recover ~9–10
+using P(resolve | clean-applied source patch) = 19.0%. Actual recovery was
+6/46 = **13.0%**. The caveat I attached at the time — that reverted instances are
+conditioned on emitting binary debris, which comes from crashing, which
+correlates with worse patches, so P(resolve | reverted) < P(resolve |
+clean-applied) — was correct, and this quantifies it at 13% vs 19%.
+
+Base and swezero recovered **0**, so nothing at the top of the board moves and
+`base ≫ arms` is completely untouched.
+
 ## 5. Harness artifact worth fixing
 
 200/500 base rollouts stored **no history** (they carry an `error` and, in 131
