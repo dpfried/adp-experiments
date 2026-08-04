@@ -95,3 +95,41 @@ that a post-hoc "it changed what we expected" cannot be claimed retroactively.
 - Denominator caveat carried over: base's per-turn stats are over the 300/500
   rollouts that stored history; A1 arms must be checked for error records before
   comparing (`grep -c '"error"'`), since v2 base had 200 and swezero had 0.
+
+---
+
+## RESULT — scored 2026-08-04, after A1 landed
+
+A1 result: base 119, swezero control 77, **A1-tokmatch 63, A1-maxpool 62**.
+Lever A (condensation removal) failed; both curated arms are below their control.
+
+| model | /500 | verify-after-edit | ran-any-test | med turns | claims-success-never-verified |
+|---|---|---|---|---|---|
+| base | 119 | 74.3% | 90.3% | 246 | 1.7% |
+| swezero control | 77 | 6.2% | 16.6% | 66 | 91.8% |
+| A1-tokmatch | 63 | **3.0%** | **5.6%** | 53 | 94.8% |
+| A1-maxpool | 62 | **3.4%** | **6.4%** | 56 | 94.8% |
+
+**All three predictions PASS:**
+
+- **P1 PASS** — both arms `verified_after_edit` < 25% (3.0 / 3.4) and
+  `ran_any_test` < 45% (5.6 / 6.4). Passed with wide margin.
+- **P2 PASS** — |tokmatch − maxpool| verify = **0.4pp** < 15pp. Corroborates the
+  campaign's formal EQUIVALENT on score (+1/500) on an independent axis.
+- **P3 PASS** — claims-success-never-verified 94.8% (both) > 60%.
+
+**Decision rule #2 applied** (P1 holds, no score gain to mediate). The finding:
+verification runs **74.3% → 6.2% → 3.0%/3.4%** against scores **119 → 77 →
+63/62**. Curation did not restore verification, it **halved what remained**, and
+the score followed — the same monotone direction as the campaign's median
+history-length chain (336 → 209.5 → 171 → 177.5), on an independent instrument.
+
+This also gives a sign to the "condensation may have been mildly protective"
+conjecture: stripping condensation records took verification 6.2% → 3.0%, i.e.
+on this source those records were the last ones modelling stop-and-check.
+Lever A's premise is inverted, not merely unsupported.
+
+**Limits.** Population rates over 500 rollouts (immune to grader flake, mildly
+exposed to generation nondeterminism), but *correlational* with score and n=4 on
+the model axis. Nothing here shows that raising verification would raise the
+score — that remains Lever B's question.
