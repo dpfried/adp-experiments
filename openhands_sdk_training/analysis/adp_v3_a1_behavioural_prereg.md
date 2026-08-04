@@ -121,8 +121,19 @@ Lever A (condensation removal) failed; both curated arms are below their control
 **Decision rule #2 applied** (P1 holds, no score gain to mediate). The finding:
 verification runs **74.3% → 6.2% → 3.0%/3.4%** against scores **119 → 77 →
 63/62**. Curation did not restore verification, it **halved what remained**, and
-the score followed — the same monotone direction as the campaign's median
-history-length chain (336 → 209.5 → 171 → 177.5), on an independent instrument.
+the score followed.
+
+⚠️ **Correction (2026-08-04, same day).** An earlier version of this paragraph
+added "— the same monotone direction as the campaign's median history-length
+chain (336 → 209.5 → 171 → 177.5), on an independent instrument." **That
+corroboration is withdrawn.** The campaign's depth↔score chain was measured on a
+single nested lineage (base + three swezero-derived arms) and **inverts across
+sources**: extended to all seven scored models, the three deepest arms are the
+three worst (rebench 206 actions / 70, coderforge 197 / 48, scale 211 / 35).
+The four-model monotone run was a subset artifact, so it cannot corroborate
+anything. The A1-lineage observation above stands on its own; it is a
+**within-lineage** statement only, exactly like the depth claim it can no longer
+lean on.
 
 This also gives a sign to the "condensation may have been mildly protective"
 conjecture: stripping condensation records took verification 6.2% → 3.0%, i.e.
