@@ -432,9 +432,25 @@ protocol-independent claim about capability in general.
 records are condensation/summarization turns (the trajectory narrates and concludes progress rather
 than taking a new action; a similar proportion, 39%, holds for `coderforge`, though the other two
 sources are not measured on this axis, so we do not know whether this generalizes across all four),
-and none of the training data carries a task-outcome label, so unresolved and looping trajectories are
-imitated on equal footing with successfully-resolved ones. Both properties are
-consistent with training a fast, confident, conclusion-oriented policy. A direct test — fine-tuning one
+and none of the training data carries a task-outcome label.
+
+⚠️ **This second property was misread, and the correction is material (2026-08-04).**
+We inferred "unfiltered" from "unlabeled." Two of the four sources were in fact
+**success-filtered upstream, before ADP normalisation**, with the label then
+dropped as a constant: `coderforge` keeps only `reward == 1` and `rebench` only
+`resolved == 1` (verified in ADP's own `extract_raw.py`, and by a join over all
+319,551 records matching at 100%). Upstream base rates were 58–63% and 47.9%, so
+the filter removed a great deal. The claim holds only for `swezero` and `scale`
+— and `swezero`, the *unfiltered* source, produced the **best** arm. So
+"unresolved trajectories are imitated on equal footing with resolved ones" is
+false for half the corpus, and outcome-verified training data is not an untested
+idea in this campaign: `coderforge` and `rebench` **are** that experiment. On the
+harness-corrected board they score 50 and 76 against unfiltered `swezero`'s 77 —
+i.e. one clearly below and one statistically indistinguishable, which is evidence
+that success-filtering is not *sufficient*, not that it is worthless. The
+comparison is also cross-source and therefore confounded.
+
+The first property (conclusion-oriented records) remains as described. A direct test — fine-tuning one
 arm on an outcome-filtered, condensation-excluded version of the same data source, holding everything
 else fixed — would establish whether curating along these two axes recovers some or all of the lost
 depth; this experiment has not yet been run and is the most direct open follow-up to this study.
