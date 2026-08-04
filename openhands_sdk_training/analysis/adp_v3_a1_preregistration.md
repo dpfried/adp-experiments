@@ -749,3 +749,68 @@ training repos. The competing "zero overlap" claim was a top-N view that missed 
 ⇒ **`clean-301` retains its decontamination justification in both public docs — it is not a
 mislabel.** And the sympy collapse (29→3) is *not* a training-repo-mix artifact: 157
 records cannot produce it, and the direction is wrong (training on a repo should help).
+
+---
+
+## 15. Training complete — measurements confirmed, §14.3 provisional status lifted (2026-08-04)
+
+_Both arms COMPLETED (exit 0:0, full 1 epoch, no restarts). Filed **before any eval
+result exists** — the SBV eval was queued at the same time._
+
+### Final training numbers
+
+| arm | steps | train_loss | eval_arm_eval_loss | `total_flos` | vs control | runtime |
+| --- | --- | --- | --- | --- | --- | --- |
+| v2 control (mixed 55,000) | 1719 | 0.3146 | — | 2.0045e19 | 1.000× | 13.73 h |
+| **A1-tokmatch (headline)** | 1245 | **0.2217** | 0.4487 | **2.0021e19** | **0.9988×** | 9.61 h (0.70×) |
+| A1-maxpool | 1640 | 0.2196 | 0.5170 | 2.6381e19 | 1.3161× | 12.57 h (0.92×) |
+
+**The headline arm landed FLOP-matched to its control within 0.12%** — tighter than the
+design targeted (the design matched *tokens*; `total_flos` agreeing to 0.12% follows, since
+HF's counter is ~token-proportional). Combined with 0.70× wall-clock and 0.72× optimizer
+steps, §10/§14's conclusion stands and is now measured rather than argued: **the headline
+arm is compute-disadvantaged relative to its control on every axis that the hardware bills
+for.** A positive A1-tokmatch cannot be attributed to extra compute.
+
+*What `total_flos` does and does not settle:* it corroborates token-matching. It does **not**
+independently arbitrate §8.3's attention argument, because HF's counter ignores attention.
+The wall-clock measurement below is what does that.
+
+### §14.3 lifted — full-n step time confirms the early measurement
+
+| run | tokens/record | median s/step | IQR | n |
+| --- | --- | --- | --- | --- |
+| v2 control | 15,500 | 25.20 | 25.00–25.40 | **339** |
+| A1-tokmatch | 21,406 | 25.60 | 25.40–25.80 | **245** |
+| A1-maxpool | 21,406 | 25.60 | 25.40–25.80 | **324** |
+
+**+1.6% step time against 1.38× tokens/record, at n=245–324.** §14.3 downgraded this to
+provisional pending full n; the early figure held exactly, and devils-advocate's specific
+concern (drift with later sequence composition / eval interleave) did not materialise.
+**§8.3's ~1.11× analytic FLOP estimate is refuted; §10's correction stands as measured.**
+
+### Training loss moved as predicted, and by a lot
+
+v3 arms 0.2217 / 0.2196 vs control **0.3146** at 1 epoch. Expected direction and magnitude:
+condensation records are free-form prose summaries (high entropy), trajectory records are
+structured tool calls (low entropy), so removing the prose lowers average loss. This is
+**not** evidence the curated arms are better — it is confirmation the intended data change
+took effect. Note also `eval_arm_eval_loss` is *higher* for maxpool (0.5170) than tokmatch
+(0.4487), consistent with more steps of specialisation away from the mixed carve-out (§13).
+
+### Format-parity pre-flight before spending eval GPU (all clean)
+
+* `chat_template.jinja` sha256 `a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715`
+  — **byte-identical across base, the v2 control, and both v3 arms**, and the same hash the
+  v2 root-cause investigation recorded. The format/template/parser class of failure is
+  therefore excluded by construction for these arms.
+* `tokenizer.json` identical; `model.safetensors` identical size (10,350,019,328) across all three.
+
+### Eval queued (no result yet)
+
+`ARM=v3a1tok` (infer 607381 → score 607382) and `ARM=v3a1max` (infer 607383 → score 607384),
+10×50 shards, kit defaults unchanged for comparability. Watch items: `sacct` for
+FAILED/TIMEOUT shards (a squeue-only monitor once missed a 100-instance hole for ~8h), the
+dash/exit-127 merge bug (hand-merge under `bash -lc`), and the concurrent-vLLM
+torch_compile cache race on shared NFS — a coder30b job (607073) is on the kit at the same
+time. Error-record counts (§14.5) run **before** the panel.
