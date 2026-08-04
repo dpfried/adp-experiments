@@ -916,3 +916,115 @@ before, because the failure mode that *does* correlate with the score is
 Phase-0 blockers stand (§9.3): no upstream labels on the filesystem, no network, gold-patch
 distillation hard-gated on exact `(repo, base_commit)` SBV exclusion, and the cheap
 finish-based proxy already measured dead.
+
+---
+
+## 17. CORRECTION — §16's "depth tracks score monotonically" does NOT generalize, and the verification hypothesis is REFUTED (2026-08-04)
+
+_dpf asked to explore the verification-filtered direction. Scoping it produced two
+refutations: one of the new hypothesis, and one of a claim **I made in §16 and reported as
+the campaign's confirmed mechanism**. Both are recorded here before any GPU was spent._
+
+### 17.1 The training data explains the arms' behaviour exactly — and indicts my source choice
+
+Full-file scan of all four subsets (detector hand-validated, precision ≳97%, residual
+false-negative ≈0.1–0.3%; `/checkpoint/dpf/adp-analysis/v3_scoping/verif/`):
+
+| subset | ran ≥1 test | test after last edit | finish-ending records with ZERO test runs |
+| --- | --- | --- | --- |
+| coderforge | 86.2% | 53.0% | **1.0%** |
+| scale | 84.8% | 45.8% | **2.1%** |
+| rebench | 89.2% | 46.5% | **1.5%** |
+| **swezero** | **0.0%** | **0.0%** | **100.0%** |
+
+**swezero contains ZERO test executions** — across 422,424 bash commands. All 27,268 of its
+finish-ending records assert completion having never run a test. Base at eval: 1.7%. So the
+arms' 91.8% assert-without-verifying is not a failure to learn — it is a **faithful
+reproduction of the training distribution**.
+
+This indicts my own source selection in §7/§8.2. I chose swezero partly because it had the
+**highest terminal-record rate (52.0%)**, which I described as the source with "the most
+*complete* episodes … precisely the depth signal Lever A is trying to restore." That was
+backwards: swezero's high finish rate is the **pathology** (finish without verifying), not a
+quality signal.
+
+**What is NOT true:** an external analysis concluded the A1 experiment was "confounded with a
+total change of data source". It was not. A1's control was the **v2 swezero arm** — same
+source, same file, mixed vs trajectory-only (verified: both A1 manifests trace to
+`nvidia_SWE-Zero-.../train.llamafactory.jsonl`, and the v2 swezero arm's tokenized cache
+lives in that same directory). Source was held constant. **§16's within-source conclusion
+stands.** What is now clear is that it *generalizes poorly*: A1 tested condensation removal
+on the one source whose trajectories never verify.
+
+### 17.2 The verification hypothesis is REFUTED (no GPU spent)
+
+Measured eval-side verification behaviour for all seven scored models on rollouts already on
+disk (`/checkpoint/dpf/adp-analysis/v3_scoping/eval_verif.py`):
+
+| model | score | ran any test | test after last edit | finish w/o verify | tests/inst |
+| --- | --- | --- | --- | --- | --- |
+| base | **119** | 51.8% | 41.8% | 9.6% | 13.3 |
+| swezero | 77 | 10.2% | 3.2% | 89.8% | 0.2 |
+| rebench | 70 | **98.0%** | 48.6% | 1.0% | 17.3 |
+| v3_tokmatch | 63 | 0.6% | 0.0% | 99.4% | 0.0 |
+| v3_maxpool | 62 | 1.0% | 0.2% | 99.0% | 0.0 |
+| coderforge | 48 | **97.8%** | 55.2% | 1.6% | 13.8 |
+| scale | **35** | **99.2%** | **60.2%** | 0.6% | **23.9** |
+
+**Spearman(score, ran-any-test) = −0.32. Spearman(score, test-after-last-edit) = −0.43.**
+
+More verification goes with **worse** score. `scale` verifies the most on every measure
+(99.2%, 60.2% after-edit, 23.9 tests/instance — nearly double base) and scores the **worst**
+(35). Base scores 119 while verifying *less* than three of the arms.
+
+⇒ **Lever B′ is dead before launch.** The base-vs-swezero verification contrast reproduces
+directionally, but generalising it to "verification is the lever" is refuted by the other
+five models. A verification-filtered arm is **not worth the ~14 GPU-hours**: the three
+subsets it would be built from already verify at 80–89% (base-comparable), and their arms
+are the *worst* performers.
+
+### 17.3 ⚠️ CORRECTION TO §16: the depth↔score relation does not generalize either
+
+§16 stated, and I reported, that "**depth tracks score monotonically across all four
+models**" and called the mechanism CONFIRMED. Extending to all seven models refutes it:
+
+| model | score | median history | median ACTIONS |
+| --- | --- | --- | --- |
+| base | **119** | 336.0 | 99.5 |
+| swezero | 77 | 209.5 | 66.0 |
+| **rebench** | 70 | **638.0** | **205.0** |
+| v3_tokmatch | 63 | 171.0 | 53.0 |
+| v3_maxpool | 62 | 177.5 | 55.5 |
+| **coderforge** | 48 | **608.5** | 196.5 |
+| **scale** | **35** | **658.5** | **211.0** |
+
+**Spearman(score, median history) = −0.32** — *negative*.
+
+The monotone relation was an artifact of the four models I happened to measure: base plus
+three swezero-derived arms, i.e. a single nested lineage. **Within the swezero lineage depth
+does track score. Across sources it inverts** — the three longest-trajectory arms are the
+three worst.
+
+This is the same error class the campaign keeps repeating: generalising from a convenient
+subset. §16's mechanism claim is **withdrawn** as a general statement and reduced to:
+*within the swezero lineage, shorter trajectories accompanied lower scores.* It is **not**
+evidence that depth causes score.
+
+### 17.4 Honest state of the mechanism question
+
+After Lever A, the verification probe, and this correction:
+
+* **No single behavioural axis measured so far explains the score ordering across sources.**
+  Not condensation share, not verification, not trajectory length/action count.
+* Base (119) sits in the *middle* on both verification (51.8%) and depth (336 / 99.5
+  actions) — it is not an extremum of either.
+* The three verbose, verifying arms (rebench/coderforge/scale, ~200 actions, ~98% verifying)
+  do **more of everything** and score **worse**, which looks more like unproductive
+  thrashing than like diligence.
+* So the honest position is: **we do not currently have a validated behavioural mechanism**
+  for why SFT on this data underperforms the base model. Any writeup should say that rather
+  than carry forward "depth-vs-compliance" or "never-verifying" as established.
+
+**What survives, unchanged:** the *outcome* facts. base 119 ≫ every arm and every combination
+method; A1's within-source result (63/62 vs 77); the pooled220k panel. Those are score-level
+and do not depend on any mechanism story.
