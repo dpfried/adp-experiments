@@ -1028,3 +1028,114 @@ After Lever A, the verification probe, and this correction:
 **What survives, unchanged:** the *outcome* facts. base 119 ≫ every arm and every combination
 method; A1's within-source result (63/62 vs 77); the pooled220k panel. Those are score-level
 and do not depend on any mechanism story.
+
+---
+
+## 18. Lever B is a NO-OP: coderforge and rebench were ALREADY success-filtered (2026-08-04)
+
+_Route B-i scoping. Compute nodes turned out to have internet (§17 corrected that false
+blocker), so the upstream join was actually attempted. The result closes Lever B without any
+GPU, and refutes one of the v2 investigation's two founding root causes._
+
+### 18.1 The finding, verified in ADP's own extractor source
+
+Not inferred from schemas — read out of the code that BUILT these subsets
+(`agent-data-protocol/datasets/<config>/extract_raw.py`):
+
+```
+coderforge_preview          : split = "filtered_reward1"        # reward == 1 ONLY
+nebius_SWE-rebench-...      : if not item["resolved"]: continue # resolved ONLY
+nvidia_SWE-Zero-...         : (no filter)
+scale_swe_distilled         : (no filter)
+```
+
+Confirmed by a **full-population** join (all 319,551 records, not a sample), which matched at
+**100.00% on all four subsets**:
+
+| subset | upstream | join key | rate | label upstream | verified-resolved traj records |
+| --- | --- | --- | --- | --- | --- |
+| coderforge | `togethercomputer/CoderForge-Preview` (`trajectories`/`filtered_reward1`) | `re.sub(r"_\d+$","",stid)` → `trajectory_id` | 100.00% | **`reward`** | **48,650 (all 1.0)** |
+| rebench | `nebius/SWE-rebench-openhands-trajectories` | `stid` → `trajectory_id` | 100.00% | **`resolved`** | **46,914 (all 1)** |
+| swezero | `nvidia/SWE-Zero-openhands-trajectories` | `stid` → `trajectory_id` | 100.00% | **none exists** | 0 |
+| scale | `AweAI-Team/Scale-SWE-Distilled` | positional `(data_source, row_idx)` | 100.00% | **none exists** | 0 |
+
+Upstream base rates for context: coderforge 58–63% reward-1 across its unfiltered splits;
+rebench 32,161/67,074 = 47.9% resolved. So the filtering removed a *lot* — it just happened
+before ADP normalisation, and the label was dropped as a constant.
+
+### 18.2 ⇒ Lever B was already run by the v2 campaign, unknowingly
+
+| source | outcome filtering | v2 arm score |
+| --- | --- | --- |
+| **coderforge** | **100% reward==1** | **48** |
+| **rebench** | **100% resolved==1** | **70** |
+| swezero | none (upstream is explicitly *"Execution-free"* fine-tuning) | **77** |
+| scale | none / unlabeled | 35 |
+
+**The two fully outcome-verified arms scored 48 and 70 — both below the unfiltered swezero
+arm's 77.** "Train only on trajectories verified to have solved the issue" is therefore not
+an untested idea in this campaign; it is what coderforge and rebench *are*, and it did not
+produce a winner.
+
+*Stated limitation:* this is a **cross-source** comparison, so it is confounded (§17 showed
+these sources differ enormously in behaviour). It is strong evidence that success-filtering is
+not *sufficient*, not proof that it is worthless. The clean within-source test is described in
+§18.4 — and note it runs in the **opposite** direction from the campaign's intent.
+
+### 18.3 ⚠️ CORRECTION: v2 root-cause hypothesis #2 is refuted
+
+The v2 investigation named two candidate data defects. #1 (~40% condensation) was refuted by
+A1 (§16). #2 was:
+
+> **NO success filtering** (no outcome label exists) → imitates unresolved/looping
+> trajectories wholesale.
+
+**That is false for coderforge and rebench.** Both are 100% success-filtered. The error was
+inferring *"unfiltered"* from *"unlabeled"*: the records genuinely carry no resolved field —
+that observation was correct — but the filtering had already happened upstream, which is
+exactly why no label survived. It is only true for swezero and scale, and swezero is the
+**best** arm.
+
+⇒ **Both of the v2 investigation's candidate mechanisms are now refuted.** Combined with §17
+(no behavioural axis explains the cross-source ordering), the campaign has **no surviving
+explanation** for why SFT on this data underperforms the base model.
+
+### 18.4 What is actually left
+
+1. **Gold-patch distillation (B2) — the one lever still standing, and it is now unblocked.**
+   Gold patches are recoverable for **rebench 100%** (46,914), **coderforge 99.1%** (48,215),
+   swezero ~100% (68.6% verified + the rest in a non-parquet slice), scale 35.2%. This is a
+   genuinely *different objective*: train on the **correct fix**, not on agent behaviour —
+   which sidesteps every behavioural pathology found so far, because it stops imitating
+   agents altogether.
+2. **The within-source test of the filter, which runs backwards.** Negatives exist upstream
+   (coderforge **102,990** reward-0; rebench **34,913** unresolved), and re-extracting them is
+   a two-line change to the ADP extractors. But the experiment that would isolate the filter's
+   value is *adding unresolved trajectories to see if it hurts* — the reverse of "add
+   verification". Cheap for rebench (2.08 GB); coderforge is 72.77 GB.
+3. **swezero/scale cannot be labelled** without executing agent patches against F2P tests.
+
+### 18.5 ★ Contamination gate: CLEAN — and this is good news for the whole campaign
+
+@devils-advocate's §9.3 gate, run at exact-commit granularity against all 500 SBV instances
+(499 distinct base_commits), using two independent commit sources per record (prompt regex +
+`instance_id` → benchmark table; they agree):
+
+| subset | traj records | base_commit resolvable | **exact (repo, base_commit) ∈ SBV** | repo-level |
+| --- | --- | --- | --- | --- |
+| coderforge | 48,650 | 16,708 | **0** | 295 |
+| scale | 47,183 | 47,183 | **0** | 0 |
+| rebench | 46,914 | 46,914 | **0** | 0 |
+| swezero | 52,473 | 52,473 | **5 records / 4 trajectories** | 256 |
+
+* **Instance-level train-on-test: 0 / 319,551 records.** VERIFIED.
+* The 5 exact-commit hits are **different PRs opened against the same parent commit** as an
+  SBV instance (sympy 15602/12471/17651/13549 vs SBV 15599/12489/17655/13551) — same
+  repository snapshot, **never the same task, never the SBV gold patch**. None of the four
+  instance_ids is an SBV instance_id.
+* SWE-smith records (31,507) contribute **zero** overlap: those instances live on synthetic
+  `swesmith/<org>__<repo>.<sha8>` forks that map to no SBV repo.
+
+⇒ The campaign is clean at the level that matters, and a gold-patch arm would be safe with a
+`--exclude-commit` filter over the 499 SBV base_commits (costing <0.6% of the data).
+
