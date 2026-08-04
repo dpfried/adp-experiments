@@ -814,3 +814,105 @@ FAILED/TIMEOUT shards (a squeue-only monitor once missed a 100-instance hole for
 dash/exit-127 merge bug (hand-merge under `bash -lc`), and the concurrent-vLLM
 torch_compile cache race on shared NFS — a coder30b job (607073) is on the kit at the same
 time. Error-record counts (§14.5) run **before** the panel.
+
+---
+
+## 16. RESULT — Lever A failed: removing condensation did not help (2026-08-04)
+
+_Both arms evaluated. Reported against §3 / §7 / §8.2 as pre-registered. All four merged
+reports verified: 500/500 instances, 0 duplicates, 0 missing._
+
+### The board
+
+| model | resolved / 500 | rate |
+| --- | --- | --- |
+| base θ₀ | **119** | 23.8% |
+| v2 swezero control (mixed 55,000) | **77** | 15.4% |
+| **A1-tokmatch (headline, 0% condensation)** | **63** | 12.6% |
+| A1-maxpool (0% condensation, +32% tokens) | **62** | 12.4% |
+
+### Paired panel (margin held at 3.0%, per-board instance counts)
+
+| comparison | Δ | McNemar | TOST verdict |
+| --- | --- | --- | --- |
+| tokmatch vs control, full-500 | −14/500 | p=0.114 n.s. | INCONCLUSIVE |
+| tokmatch vs control, ex-sphinx-456 | −14/456 | p=0.114 n.s. | INCONCLUSIVE |
+| tokmatch vs control, clean-301 | −14/301 (−4.65%) | p=0.076 n.s. | INCONCLUSIVE |
+| **tokmatch vs base 119** | **−56/500** | **p<0.0001** | **DIFFERENT** |
+| maxpool vs control | −15/500 | p=0.101 n.s. | INCONCLUSIVE |
+| **tokmatch vs maxpool** | **+1/500** | p=1.000 | **EQUIVALENT** |
+
+### Verdict against the pre-registration
+
+* **H-A1 (trajectory-only > mixed) is NOT supported.** Both curated arms landed *below*
+  their matched control, consistently in direction (−14, −15/500).
+* **This is Falsifier 1, in the rescoped form §8.2 requires:** "Lever A is inert **on the
+  conservative source**." swezero has the *least* condensation to remove (34.3%), so a
+  rebench replication (41.3%) is the pre-registered next step before Lever A is declared
+  dead campaign-wide.
+* **Falsifier 2 is NOT met either.** The direction is negative but p=0.076–0.114, so we
+  **cannot** claim condensation carries real value. Reported as **inconclusive**, not as
+  "condensation helps" — per §8.1, n.s. is not evidence of a reversal any more than of
+  equivalence.
+* **The extra-data confound (§9.1) turns out to be empty.** maxpool has +32% tokens and
+  +395 steps over tokmatch and scores **+1/500, EQUIVALENT**. So "more action data" buys
+  nothing here, and the gated third arm (A1-subtract) is **not** worth running: §9.1 gated
+  it on a *positive* A1, and there is none.
+* **Curation did not close any of the −42 gap to base.** It widened it to −56.
+
+### Mechanism check (§4) — confirmed, but it refutes the assumption behind Lever A
+
+| model | resolved | median history length | empty patch | finish |
+| --- | --- | --- | --- | --- |
+| base | 119 | **336.0** | 138 | 300/500 |
+| swezero control | 77 | 209.5 | 0 | 500/500 |
+| A1-tokmatch | 63 | **171.0** | 4 | 500/500 |
+| A1-maxpool | 62 | 177.5 | 9 | 500/500 |
+
+**Depth tracks score monotonically across all four models** (336 → 209.5 → 171.0 → 177.5
+against 119 → 77 → 63 → 62). §4 predicted that if the depth story were right, a curated arm
+would shift *toward* base — more actions, fewer premature finishes. **It shifted further
+away:** the condensation-free policy is *shallower still*, and the score followed it down.
+
+So the two halves of the v2 story separate cleanly:
+
+* **The depth↔score mechanism is CONFIRMED** and strengthened — it now holds across four
+  models spanning 62–119 resolved.
+* **The attribution of shallowness to condensation records is REFUTED.** Removing them made
+  the policy shallower, not deeper. The pathology lives in the *trajectory* records
+  themselves, not in the condensation pairs — consistent with main-worker's trajectory
+  analysis (ran-any-test 90.3% → 16.6%, re-tested-after-last-edit 74.3% → 6.2%, asserts
+  success in `finish` while never verifying 1.7% → 91.8%). Condensation records were, if
+  anything, mildly *protective* — plausibly the only records in the mix that model
+  "stop and take stock" rather than "edit and declare done".
+
+### Measurement hygiene notes
+
+* Both arms: **0 error records, 0 no-history rollouts, 500/500 clean** — no infra asymmetry
+  of the kind that depresses θ₀ (§14.5: base had 44 infra failures / 200 no-history). So
+  none of this gap is an artifact of lopsided infrastructure failure.
+* Correction to an earlier count of mine: tokmatch empty-patch is **4**, not the 33 I first
+  reported — the first pass counted duplicate rollout lines rather than deduping by
+  `instance_id`.
+* A crude "ran a test" regex saturated at 500/500 for all SFT arms and is **uninformative**;
+  main-worker's careful instrumentation is the measurement to cite.
+* **§8.1 nuance corrected by data:** soup-worker argued equivalence is *structurally*
+  unreachable at N=500. That holds for a high-discordance pair (122 discordant → SE≈11/500,
+  90% CI ≈ ±18), but tokmatch-vs-maxpool has only **65 discordant** → SE≈8.1/500, half-width
+  2.65% < 3.0% margin, so **EQUIVALENT was declarable.** Reachability is a function of
+  *discordance*, not of N alone.
+
+### What this means for the campaign
+
+The v3 thesis — that ~40% condensation records were diluting the training signal — **is
+wrong as stated**, at least on the conservative source. Lever A is spent unless a rebench
+replication says otherwise, and the honest reading is that **raw ADP SWE trajectory data
+does not become a usable SFT source for lifting a strong instruct base merely by removing
+the summarization records.**
+
+The surviving lever is Lever B (outcome verification) — and it is now better motivated than
+before, because the failure mode that *does* correlate with the score is
+**never-verifying**, which is exactly what an outcome/verification filter targets. Its
+Phase-0 blockers stand (§9.3): no upstream labels on the filesystem, no network, gold-patch
+distillation hard-gated on exact `(repo, base_commit)` SBV exclusion, and the cheap
+finish-based proxy already measured dead.
