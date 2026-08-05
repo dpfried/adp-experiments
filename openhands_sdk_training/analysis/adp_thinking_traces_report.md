@@ -838,47 +838,69 @@ Model weights byte-identical to cell E's; in-job guard asserts the rendered prom
 
 ### 3.4g Cell G interim — the block fired, and both pre-registered risks came true
 
-Read at **G = 50/100 instances attempted** (42 transcript-bearing), array still running.
+Read at **G = 66/100 instances attempted** (50 transcript-bearing), array still running.
+**Both reads are shown side by side (N=50 → N=66) so the drift is visible rather than hidden**
+— see the trajectory note at the end of this section, which is the reason not to quote a
+magnitude from either column yet.
 All numbers below are **attempt 1 only**, both cells read through
 [`load_rollouts.py`](load_rollouts.py) from `output.critic_attempt_1.jsonl`
-(house rules 1–2). Two denominators, per rule 5: **N = 50 paired instances** for
-outcome classes, **M = 22 paired transcripts** for behavioural rates — M is capped by
+(house rules 1–2). Two denominators, per rule 5: **N = 66 paired instances** for
+outcome classes, **M = 27 paired transcripts** for behavioural rates — M is capped by
 **E**, which has only 46 transcripts of 100, and the intersection is smaller still because
-20 of G's 42 transcripts fall on instances where E *has no transcript at all* (E capped or
-errored there).
+**23 of G's 50 transcripts fall on instances where E has no transcript at all** (E capped or
+errored there). Note the asymmetry this creates: the behavioural comparison is structurally
+restricted to instances **E could finish**, i.e. the easier half, and no amount of G data
+fixes that — only re-running E would.
 
 #### Measured
 
-**1. The intervention fired, completely.** `0 / 9,398` of G's action events carry event-level
-prose. Not "reduced" — zero, in both shards.
+**1. The intervention fired, completely.** `0 / 12,564` of G's action events carry event-level
+prose. Not "reduced" — zero, in both shards, at every read.
 
-| paired, per-instance medians (M = 22) | E (stock) | G (prefill) | G>E | G<E | sign p |
+| paired, per-instance medians | E (stock) | G (prefill) | G>E | G<E | sign p |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| **narration %** | 44.46 | **0.00** | 0 | **22** | **<1e-6** |
-| **`ThinkAction` share %** | 7.16 | **16.83** | **20** | 2 | **0.0001** |
-| malformed tool-call % | 2.06 | 3.34 | 15 | 7 | 0.134 |
-| `AgentErrorEvent`s | 4.0 | 8.5 | 15 | 7 | 0.134 |
-| action events | 213.0 | 255.5 | 11 | 11 | 1.000 |
+| **narration %** — M=22 | 44.46 | **0.00** | 0 | 22 | <1e-6 |
+| **narration %** — **M=27** | 44.87 | **0.00** | 0 | **27** | **<1e-8** |
+| **`ThinkAction` %** — M=22 | 7.16 | 16.83 | 20 | 2 | 0.0001 |
+| **`ThinkAction` %** — **M=27** | 6.96 | **17.65** | **25** | 2 | **<1e-4** |
+| malformed tool-call % — M=22 | 2.06 | 3.34 | 15 | 7 | 0.134 (ns) |
+| malformed tool-call % — **M=27** | 1.94 | **3.45** | **20** | 7 | **0.019** |
+| `AgentErrorEvent`s — M=22 | 4.0 | 8.5 | 15 | 7 | 0.134 (ns) |
+| `AgentErrorEvent`s — **M=27** | 4.0 | **10.0** | **20** | 7 | **0.019** |
+| action events — M=22 | 213.0 | 255.5 | 11 | 11 | 1.000 |
+| action events — **M=27** | 216.0 | 263.0 | 13 | 14 | 1.000 |
 
-**2. Outcome-class crosstab, paired on all N = 50** (rows E, cols G):
+**2. Outcome-class crosstab, paired on all N = 66** (rows E, cols G):
 
 | E \ G | cap500 | ok | stuck | total |
 | --- | ---: | ---: | ---: | ---: |
-| **cap500** | 0 | **16** | 2 | 18 |
-| ok | 3 | 22 | 0 | 25 |
-| other/timeout/ENOSPC | 1 | 4 | 2 | 7 |
-| **total** | **4** | **42** | 4 | 50 |
+| **cap500** | 3 | **18** | 3 | 24 |
+| ok | 4 | 27 | 0 | 31 |
+| other/timeout/ENOSPC/stuck | 4 | 5 | 2 | 11 |
+| **total** | **11** | **50** | 5 | 66 |
 
-| paired rate (N = 50) | E | G | exact McNemar |
+| paired rate | E | G | exact McNemar |
 | --- | ---: | ---: | ---: |
-| **500-iteration cap hit** | **36.0%** | **8.0%** | **p = 0.0043** |
-| ran to completion (`ok`) | 50.0% | 84.0% | — |
-| has a gradeable patch | 74.0% | 60.0% | p = 0.167 |
-| stuck-detector fired | 2.0% | 8.0% | — |
+| **500-iteration cap hit** — N=50 | 36.0% | 8.0% | p = 0.0043 |
+| **500-iteration cap hit** — **N=66** | **36.4%** | **16.7%** | **p = 0.024** |
+| ran to completion (`ok`) — N=66 | 47.0% | 75.8% | — |
+| has a gradeable patch — N=50 | 74.0% | 60.0% | p = 0.167 (ns) |
+| has a gradeable patch — **N=66** | 71.2% | 63.6% | p = 0.405 (ns) |
+| stuck-detector fired — N=66 | 3.0% | 7.6% | — |
 
-E's cap rate on this subset (36.0%) matches its rate over all 100 (35.0%), so the subset is
-not unrepresentative for E; the pairing also removes the "fast instances finish first"
-ordering bias that makes G's raw 6.1% uninterpretable on its own.
+E's cap rate on the paired subset (36.4%) matches its rate over all 100 (35.0%) at both reads,
+so the subset is not unrepresentative for E; the pairing also removes the "fast instances
+finish first" ordering bias that makes G's raw rate uninterpretable on its own.
+
+**Trajectory, N=50 → N=66 — read this before quoting any magnitude above.** The cap-hit gap
+**shrank from 28.0 pp to 19.7 pp** and its p rose an order of magnitude (0.0043 → 0.024) on 16
+extra instances. That is the expected signature of the ordering bias operating *within* the
+pairing: cap-hitters take ~15× longer than clean runs, so they arrive last **in both cells**, and
+until the array finishes every read over-represents easy instances. **Expect further attenuation
+at N=100. The direction is stable across reads and the effect is significant at both; the
+magnitude is not yet quotable.** Meanwhile the two malformed-call metrics moved the other way,
+crossing from ns into p = 0.019 — so more data is not uniformly deflationary, and neither drift
+should be extrapolated.
 
 #### Inferred, with the confounds that are now measured rather than hypothesised
 
@@ -893,18 +915,30 @@ ordering bias that makes G's raw 6.1% uninterpretable on its own.
   flatters G.** Blocking prose cuts cap hits 36% → 8% (p = 0.0043); 16 of E's 18 cap-hitters
   run to completion under G. G therefore gets strictly more usable task budget than E.
   **Any score win by G is confounded by this and cannot be read as an effect of narration.**
-  A score *loss* by G is the only cleanly interpretable direction, since it would have to
-  overcome a large advantage.
+  ~~A score *loss* by G is the only cleanly interpretable direction.~~ **Superseded at N=66:
+  see risk (a) below — a loss is no longer clean either.**
 * **A second confound points the other way**, so they do not cancel into "roughly fair":
-  G has a gradeable patch on 60% of instances vs E's 74% (p = 0.167, not significant). Fewer
-  patches mechanically depresses score. Two opposed confounds of unequal certainty is worse
-  than one, not better.
+  G has a gradeable patch on 63.6% of instances vs E's 71.2% (p = 0.405, not significant).
+  Fewer patches mechanically depresses score. Two opposed confounds of unequal certainty is
+  worse than one, not better.
 * **Turn count is unchanged where E does not cap** (213 vs 255.5 median, 11/11, p = 1.0), but
   that comparison is conditioned on E having a transcript, i.e. on E *not* capping — the
   interesting instances are missing from it by construction. The mechanism behind the cap
   drop is not established by these data.
-* Malformed tool calls and `AgentErrorEvent`s trend up ~1.6× but are not significant at
-  M = 22 and must not be quoted as effects yet.
+* **Pre-registered risk (a), distribution shift: now has direct evidence, and it cuts against
+  G.** Malformed tool calls (1.94% → 3.45%) and `AgentErrorEvent`s (4 → 10 per instance) are
+  both up on 20 of 27 paired instances at **p = 0.019** — non-significant at M=22, significant
+  at M=27. The two are consistent with each other by construction: a `think` call missing its
+  `thought` argument *is* an `AgentErrorEvent`. So prefilling `<tool_call>\n` measurably
+  degrades tool-call well-formedness, which wastes turns and pushes G's score **down**.
+* **The confound budget is now three, not two, and they do not point the same way** (rule 4):
+  cap-hit favours G; malformed calls and the patch-rate deficit disfavour it; and I have not
+  bounded the total. **What I can say is that a G score win is uninterpretable** — the largest
+  and best-established confound flatters it. What I cannot say is that a G score *loss* would
+  be clean, because the malformed-call effect would produce one on its own, with no reasoning
+  mechanism involved. **Neither direction is now cleanly interpretable — this is weaker than
+  what I claimed at N=50**, where I wrote that a loss "is the only cleanly interpretable
+  direction." That was true only while risk (a) had no evidence behind it.
 
 #### Worked example for house rule 6 (don't ship a correction the same hour you measure it)
 
