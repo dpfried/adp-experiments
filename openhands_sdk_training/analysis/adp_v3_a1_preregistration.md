@@ -1139,3 +1139,130 @@ explanation** for why SFT on this data underperforms the base model.
 ⇒ The campaign is clean at the level that matters, and a gold-patch arm would be safe with a
 `--exclude-commit` filter over the 499 SBV base_commits (costing <0.6% of the data).
 
+
+## 19. Thinking traces — audit of what is actually used, in training and in eval (2026-08-04)
+
+dpf asked directly: *are thinking traces used in evaluation, and/or in training?* Answer:
+**native chain-of-thought is OFF in both — but there is a `think` TOOL that IS trained on and
+IS used at eval, and the two paths disagree on prompt format.** All numbers below are
+measured, not inferred.
+
+### 19.1 Native reasoning (`<think>…</think>`) — off everywhere. VERIFIED.
+
+**Training.** `template: qwen3_5_nothink` in every v2/v3 config. In LLaMA-Factory
+(`data/template.py:2167`) that template is registered as a **plain `Template`**; the
+with-thinking sibling `qwen3_5` (:2151) is identical except for
+`template_class=ReasoningTemplate`. Ground truth from decoding the **actual tokenized caches**
+(v2_swezero, v3_tokmatch, v3_maxpool — all three identical on the shared first record,
+12,945 tokens, 19.8% loss-bearing):
+
+* `<think>` occurrences in the decoded record: **0**
+* empty `<think>\n\n</think>` blocks: **0**
+* assistant turns are trained as `<|im_start|>assistant\n<tool_call>\n<function=…>` —
+  content begins **immediately**, with no reasoning slot.
+
+**Eval.** `run_full_infer.sbatch` writes `"reasoning_effort": "none"` and
+`litellm_extra_body.chat_template_kwargs = {"enable_thinking": false}`; vLLM ran with
+`reasoning_parser=''`. Empirically, across **all 7 scored models × 500 instances (3,500
+rollouts)**: `reasoning_content` non-empty in **0**, `thinking_blocks` non-empty in **0**.
+Literal `<think>` leaked into action text in 6 base + 2 rebench instances only. Since no
+reasoning parser was installed, CoT — had it been generated — would have landed verbatim in
+message content; its near-total absence confirms `enable_thinking: false` genuinely took
+effect.
+
+### 19.2 ⚠️ A real train/eval prompt-format mismatch. CONFIRMED, effect size UNKNOWN.
+
+The Qwen3.5 chat template (verified in the stock snapshot **and** in the SFT checkpoints'
+own `output/chat_template.jinja`) contains:
+
+```jinja
+{%- if add_generation_prompt %}
+    {{- '<|im_start|>assistant\n' }}
+    {%- if enable_thinking is defined and enable_thinking is false %}
+        {{- '<think>\n\n</think>\n\n' }}
+```
+
+Rendered, `enable_thinking=False` ends every generation prompt with
+`'<|im_start|>assistant\n<think>\n\n</think>\n\n'`. Eval passes **no** `--chat-template`
+override (arg 4 of the sbatch, unset for all arms), so the checkpoint's own stock template is
+used. Therefore:
+
+| | assistant-turn prefix |
+| --- | --- |
+| **training** (`qwen3_5_nothink`) | `<\|im_start\|>assistant\n` → content |
+| **eval** (stock template, `enable_thinking:false`) | `<\|im_start\|>assistant\n<think>\n\n</think>\n\n` → content |
+
+Every assistant turn at eval is prefixed with a short token sequence the SFT'd models **never
+saw in that position**. This affects **all six SFT arms**.
+
+**Why it is worth flagging rather than filing away:** the mismatch is **asymmetric in base's
+favour**. Base θ₀ is stock Qwen3.5-4B-Instruct, whose non-thinking mode was post-trained with
+exactly this prefix — base is evaluated **in-distribution**; every arm is evaluated
+**out-of-distribution**. With Lever A refuted (§16), the verification hypothesis refuted
+(§17), and Lever B a no-op (§18), "no behavioural axis explains the base ≫ arms gap" (§17) —
+and a formatting artifact is now a live, untested alternative to a data-quality explanation.
+
+**Pre-committed limits on this claim** (stated before any test is run):
+* It **cannot** explain arm-vs-arm ordering — all arms share the mismatch identically.
+* A constant 5-token prefix may well be harmless; SFT models are often robust to it. The
+  effect size is **unmeasured**. Do **not** report this as "the answer" to the v2 gap.
+* Cheap falsifier: re-serve one arm with `--chat-template` pinned to a jinja that omits the
+  empty think block (matching training), on a fixed subset, and compare paired. One eval.
+  **Not launched** — proposed only.
+
+### 19.3 The `think` TOOL — trained on (loss-bearing) and used at eval. VERIFIED.
+
+Distinct from native CoT: ADP trajectories carry an explicit `think` tool
+(`{"name":"think","arguments":{"thought": …}}`, `role: function_call`), declared in every
+record's tool list (`terminal, file_editor, finish, think`). Decoding the loss mask shows
+`<function=think>\n<parameter=thought>\nLet me analyze the issue…` sits **inside the
+loss-bearing tokens** — the models are explicitly trained to emit reasoning **as tool calls**.
+
+Training-side census (recounted correctly — tool calls are structural, not `<function=>` text):
+
+| subset | records | tool calls | `think` calls | % of calls | % of records |
+| --- | --- | --- | --- | --- | --- |
+| swezero | 79,874 | 1,173,922 | **83,529** | 7.1% | 58.4% |
+| coderforge | 79,890 | 1,112,732 | **72,309** | 6.5% | 50.8% |
+| rebench | 79,887 | 1,062,348 | **45,279** | 4.3% | 40.4% |
+| **scale** | 79,900 | 1,160,054 | **0** | **0.0%** | **0.0%** |
+| pooled220k | 220,000 | 3,100,233 | 137,930 | 4.4% | 37.3% |
+
+Eval-side, same tool:
+
+| model | /500 | `think` calls | instances using it | calls/inst | % of all calls |
+| --- | --- | --- | --- | --- | --- |
+| base | **119** | 6,676 | 290 (58%) | **13.4** | ~7.8% |
+| swezero | 77 | 1,330 | 493 | 2.7 | ~2.9% |
+| rebench | 70 | 1,435 | 488 | 2.9 | ~1.2% |
+| v3_tokmatch | 63 | 1,233 | 488 | 2.5 | ~3.4% |
+| v3_maxpool | 62 | 1,246 | 488 | 2.5 | ~3.4% |
+| coderforge | 48 | 1,820 | 484 | 3.6 | ~1.6% |
+| **scale** | **35** | **0** | **0** | **0.0** | **0.0%** |
+
+Three observations, ordered by how much weight they can bear:
+
+1. **`scale` 0 → 0 is an exact behavioural transfer.** The one subset with zero `think` calls
+   in training produced the one model that never calls `think` at eval — and it is the worst
+   arm (35). Clean, but **n = 1 and heavily confounded** (scale also emits out-of-vocabulary
+   tool names — `execute_bash` ×451, `str_replace_editor` ×53 — that the scaffold does not
+   offer, so it differs from the other arms in more ways than this one).
+2. **SFT halved-to-quartered think usage relative to its own training data** (swezero
+   7.1% → 2.9%; coderforge 6.5% → 1.6%; rebench 4.3% → 1.2%), and changed its *shape*: base
+   concentrates thinking (58% of instances, 13.4 calls each) while the arms spread it thin
+   (~98% of instances, ~2.5 calls each). Same pattern as the verify loop in §17 — the
+   behaviour is present in the data but not reproduced at rate.
+3. **Spearman(score, think-calls/instance) = +0.60** across the 7 models — the **first**
+   behavioural axis with a *positive* sign (depth was −0.32, verification −0.32/−0.43).
+   **But this is driven almost entirely by base being an outlier**: excluding base it falls to
+   **+0.36**, n = 6, nowhere near significant. Base beats the arms on nearly every axis, so
+   any base-inclusive correlation is weak evidence. **Not** carried as a mechanism.
+
+### 19.4 Bottom line
+
+* Native thinking traces: **not used in training, not used in eval, not generated.** Clean.
+* The ADP `think` tool: **used in both**, loss-bearing in training, live at eval — this is the
+  campaign's only "reasoning" channel, and SFT systematically attenuates it.
+* One genuine defect surfaced: **the empty-`<think>` prompt prefix is present at eval and
+  absent in training, for every SFT arm but not for base.** Confirmed to exist; effect
+  unmeasured; one paired eval would settle it.
