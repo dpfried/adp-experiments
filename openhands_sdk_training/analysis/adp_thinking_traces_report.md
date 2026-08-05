@@ -16,10 +16,12 @@ Three different things get called "thinking" here. Keeping them apart is the who
 | 2 | **The empty `<think>\n\n</think>` stub** — literal text from the chat template | **No** | **Yes, every turn** |
 | 3 | **The ADP `think` TOOL** — reasoning emitted as a tool call | **Yes, loss-bearing** | **Yes, live** |
 
-Second headline, added 2026-08-04: the `think` tool is not a curiosity — it carries
-**20–22%** of the SFT gradient for swezero and the v3 arms, and its training share predicts
-its eval share with **perfect rank fidelity (Spearman = +1.00, n = 6)** while predicting
-score not at all (§3.4b–§3.4c).
+Second headline, added 2026-08-04 (revised after adversarial review on PR #7): the `think`
+tool is not a curiosity — it carries **20–22%** of the SFT gradient for swezero and the v3
+arms, and it transmits **gradedly** into eval behaviour (22.3% → 15.9% at the top,
+8.5% → 3.7% at the bottom, 0 → 0 exactly for `scale`) while predicting score not at all.
+Transmission fidelity is **highest for `think` and lowest for environment-coupled tools** —
+i.e. the behaviour that copies best is the one that doesn't matter (§3.4b–§3.4c).
 
 The headline: **no model in this campaign ever generated a native reasoning trace.** What
 looks like "thinking" in the trajectories is #3, an ordinary tool call. And #2 is a
@@ -382,38 +384,65 @@ tokenizer. Two denominators, because neither alone is airtight:
 | coderforge | 48 | 1,820 | 717,836 | 15,499,780 | 13,316,313 | **5.4%** | 4.6% | 1,436 |
 | scale | 35 | 0 | 0 | 14,555,603 | 12,036,906 | **0.0%** | 0.0% | 0 |
 
-#### The result: behaviour transmits with perfect rank fidelity — and still does not predict score
+#### The result: `think` transmits gradedly from data to behaviour — and is score-blind
 
-| model | **train** think-share | **eval** think-share | eval/train |
-| --- | --- | --- | --- |
-| v3_tokmatch | 22.3% | 15.9% | 0.71 |
-| v3_maxpool | 21.5% | 15.7% | 0.73 |
-| swezero | 20.5% | 12.9% | 0.63 |
-| coderforge | 13.3% | 5.4% | 0.41 |
-| rebench | 8.5% | 3.7% | 0.44 |
-| scale | 0.0% | 0.0% | — (0 → 0 exactly) |
+| model | **train** think-share | **eval** think-share |
+| --- | --- | --- |
+| v3_tokmatch | 22.3% | 15.9% |
+| v3_maxpool | 21.5% | 15.7% |
+| swezero | 20.5% | 12.9% |
+| coderforge | 13.3% | 5.4% |
+| rebench | 8.5% | 3.7% |
+| scale | 0.0% | 0.0% (exact) |
 
-**Spearman(train share, eval share) = +1.00 over the six arms** — the ordering is preserved
-without a single inversion (p ≈ 0.003 under the exact permutation null). Every arm
-*under-expresses* relative to its data (eval/train ≈ 0.4–0.7), but the ranking survives
-intact, and `scale`'s 0 → 0 is exact.
+**Lead with the effect sizes, not the rank test.** Think-heavy sources produce think-heavy
+models (22.3 → 15.9, 20.5 → 12.9) and think-light sources produce think-light models
+(8.5 → 3.7); `scale`'s 0 → 0 is exact. The gap between the top and bottom non-zero arm is
+**4.3× in the data and 4.3× at eval**. That graded correspondence is what carries the
+conclusion.
 
-This is the first **positive control** in the campaign: it demonstrates the pipeline
-faithfully transmits a training-data behaviour into eval-time behaviour. So
-"the arms didn't learn the data" is **not** available as an explanation for the base ≫ arms
-gap. They learned it precisely. It just didn't help:
+**The rank test is weaker than it looks, and should not be the headline.** Spearman = +1.00
+over the six arms is `p = 2/n! ≈ 0.003` only if the six are independent, and they are not:
+
+| treatment of the points | n | p |
+| --- | --- | --- |
+| all six arms as independent | 6 | 0.003 |
+| collapse the swezero lineage (swezero / tokmatch / maxpool = one source) | 4 | **0.083** |
+| also drop `scale` (0 → 0 is structurally forced, not an informative ordering) | 3 | **0.33** |
+
+⇒ the defensible statement is "**3–4 independent sources ordered correctly, n.s.**"
+(*credit: devils-advocate, PR #7 review — this correction is theirs.*)
+
+**What the result does establish.** Its job is to refute *"the arms never learned the training
+data"* as an explanation for base ≫ arms, and the graded effect sizes do that without any
+p-value. The arms learned this behaviour, in proportion to how much of it they were fed. It
+simply did not help:
 
 * Spearman(score, eval think-share) = **+0.61** with base (n=7), **+0.37** without (n=6,
-  p ≈ 0.47, n.s.). As with the earlier per-instance count, **base drives it** — among arms
-  alone it is noise. Not a mechanism.
-* The two arms that generate the *most* reasoning prose (v3_tokmatch 15.9%, v3_maxpool 15.7%)
-  score **63 and 62** — worse than swezero at 12.9%, and far worse than base.
+  p ≈ 0.47, n.s.). Base drives it; among arms it is noise.
+* **The one contrast where data lineage is held fixed points the other way.** Within the
+  swezero lineage — same source corpus, differing only in curation — more think prose goes
+  with a *lower* score: swezero 12.9% → **77**, v3_tokmatch 15.9% → **63**, v3_maxpool
+  15.7% → **62**. n = 3 and n.s., but it is the only controlled slice available, and it is
+  cleaner evidence for "not the lever" than the base-inclusive +0.61.
 
-Base is the striking row: never trained by us on any ADP data, it generates the **largest**
-share of `think` prose of any model (19.5%) and 5,188 think tokens per instance against
+Base is still the striking row: never trained by us on ADP data, it emits the **largest**
+share of think prose of any model (19.5%) and 5,188 think tokens per instance against
 ~1,100–1,400 for every arm.
 
-#### Transmission is general, not a `think` artefact
+**Do not read the eval/train ratio as "attenuation."** The two shares have incomparable
+denominators — training share is over the training corpus's action mix, eval share is over
+generated tokens on a *different* task distribution that demands a different non-think action
+profile. A perfectly faithful model would still show a ratio ≠ 1. The **ranking** is
+meaningful; the magnitude of the ratio does not isolate a behavioural change from a
+denominator effect, so no "under-expression" or "level shift" claim is made here.
+
+**Score board used.** The rank ordering above is unchanged under main-worker's
+harness-corrected board (`*_nodeb`: rebench 70 → 76, coderforge 48 → 50, scale 35 → 36) —
+77 > 76 > 63 > 62 > 50 > 36 is the same ordering as 77 > 70 > 63 > 62 > 48 > 35, so every
+Spearman-vs-score figure here is identical on either board.
+
+#### Is this general? No — and the bound is the more interesting finding
 
 Same measurement over all tools. Training figures use the same contiguous cross-shard
 sampling (n ≈ 390/subset); eval figures are the reconstruction above (% of generated tokens):
@@ -428,8 +457,18 @@ sampling (n ≈ 390/subset); eval figures are the reconstruction above (% of gen
 | v3_maxpool | 52.2 / 15.3 / 21.3 | 55.9 / 23.0 / 15.7 |
 | **base** | *(not trained by us)* | **16.6 / 45.8 / 19.5** (+ **16.2%** plain message content) |
 
-Rank fidelity by tool: `think` **+1.00**, `file_editor` +0.54, `terminal` +0.37 (all n=6).
-So transmission is real across the board and *strongest* for `think`.
+Rank fidelity by tool: `think` **+1.00**, `file_editor` **+0.54**, `terminal` **+0.37**
+(all n=6, same independence caveat as above).
+
+**Transmission fidelity falls as the behaviour becomes more environment-coupled.** So the
+claim is *not* "the pipeline faithfully transmits data behaviour" in general — it is
+**`think` transmits with high fidelity; environment-coupled behaviours transmit only
+partially**. That bound is the richer result: **the behaviour that transmits best is the one
+that is score-irrelevant, and the behaviours plausibly relevant to score — shell use,
+verification depth — are the ones that transmit worst.** Consistent with "the arms learned
+the easy-to-imitate surface and not the hard-to-imitate policy." It still does the one job
+the positive control needs to do: kill "SFT didn't take."
+*(Scoping and framing: devils-advocate, PR #7 review.)*
 
 **The largest behavioural split in the table is not `think` at all — it is base vs everything
 else.** Base spends **45.8%** of its output driving the `terminal` and only **16.6%** on the
@@ -437,8 +476,19 @@ structured `file_editor`; every arm inverts this (**56–71%** `file_editor`, 21
 And base spends **16.2%** of its generated tokens on ordinary message content — talking — while
 every SFT arm rounds to **0.0%** (< 0.05%). SFT on ADP trajectories appears to eliminate the
 natural-language channel entirely and move the model from a shell-driven to an editor-driven
-workflow. This is **n=1 on the base side and unconfounded from nothing** — it is a hypothesis
-worth a targeted test, not a mechanism.
+workflow.
+
+**But this is the verification finding re-encoded, not a new axis** — shell use is where
+exploration and testing happen, `file_editor` is "just edit" — so it belongs with
+`adp_v3_a1_preregistration.md` §17 rather than being presented as a separate discontinuity.
+
+**⚠️ The naive lever is already refuted by the same table.** Across arms, terminal share does
+**not** predict score: `scale` has the *highest* arm terminal share (**40.7%**) and is the
+*worst* arm (**35**). So the reading is not "use the shell more" — it is "use it
+productively," which is the verification-quality point, not a new one. State the scale
+counterexample beside the observation so this cannot be mis-quoted as a lever.
+It remains **n=1 on the base side** — a hypothesis worth a targeted test, not a mechanism.
+*(Both points: devils-advocate, PR #7 review.)*
 
 ### 3.4d Method notes and caveats — read before quoting these numbers
 
@@ -459,6 +509,14 @@ worth a targeted test, not a mechanism.
   is false (it is the single largest category). Match `<function` (`[27, 1628]`) and decode
   the name. The `think` figures were never affected: they used the exact full sequence
   `<function=think>`.
+* **Base's 19.5% is a lower bound, and the bias is inert.** If base's 833 malformed `think`
+  calls sit in the 13–19% of `usage` that reconstruction does not recover, the omission pushes
+  base's think share *up*. Base is already the maximum, is excluded from the arms-only
+  Spearman, and is held out of the score-blindness claim — so no conditional result moves.
+* **Sampling validation is two-method agreement, not sample size.** The load-bearing check is
+  that the pooled share is *predicted from its four sources to within 0.4pp* (10.5% predicted
+  vs 10.7 / 11.1 measured), plus two independent draws agreeing to ≤0.5pp — not the ~1.4%
+  coverage per se.
 * **Eval reconstruction is approximate.** Parameter order is taken from the arguments JSON and
   assumed to be generation order; the `<tool_call>` wrapper is excluded. This is why both
   denominators are reported — the conclusions are identical under either.
@@ -477,13 +535,16 @@ worth a targeted test, not a mechanism.
    concentrates thinking (58% of instances, 13.4 calls each) while the arms sprinkle it
    (~98% of instances, ~2.5 calls each). This is the same signature as the lost verify loop
    documented in `adp_v3_a1_preregistration.md` §17: the behaviour is present in the data
-   but not reproduced at rate. **Refined by §3.4c:** the attenuation is uniform-ish
-   (eval/train ≈ 0.4–0.7 by token share) and the **rank ordering is preserved exactly**
-   (Spearman = +1.00, n = 6). So it is a level shift, not a failure to learn.
-3. **Behaviour transmits; it just isn't the lever.** §3.4c is a positive control — the
-   pipeline demonstrably carries a data behaviour through to eval with perfect rank
-   fidelity, so "the arms didn't learn the data" cannot explain base ≫ arms. Yet the two
-   arms that generate the *most* reasoning prose score 63 and 62.
+   but not reproduced at the same rate. **Refined by §3.4c:** the token-share ordering is
+   preserved without inversion, though the eval/train *ratio* is not interpretable as
+   attenuation (incomparable denominators).
+3. **The behaviour transmits; it just isn't the lever.** §3.4c is a positive control **for
+   `think` specifically** — think-heavy data yields think-heavy models in graded proportion,
+   so "the arms didn't learn the data" cannot explain base ≫ arms. Yet the two arms that
+   generate the *most* reasoning prose score 63 and 62, and within the swezero lineage —
+   the only slice where data lineage is controlled — more think prose goes with a *lower*
+   score. Transmission fidelity is *worst* for the environment-coupled tools that might
+   actually matter.
 4. **Spearman(score, think-calls/instance) = +0.57** across the 7 models — the first
    behavioural axis in this campaign with a *positive* sign (depth was −0.32, verification
    −0.32 / −0.43). **But base drives it entirely**: excluding base it falls to **+0.31**,

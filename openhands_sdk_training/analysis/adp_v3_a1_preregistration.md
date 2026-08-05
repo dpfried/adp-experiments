@@ -1325,12 +1325,24 @@ observation slot, **masked — 0 loss-bearing tokens in every subset.**
 `think` as a share of generated tokens: base **19.5%**, v3_tokmatch 15.9%, v3_maxpool 15.7%,
 swezero 12.9%, coderforge 5.4%, rebench 3.7%, scale 0.0%.
 
-**⇒ Spearman(train share, eval share) = +1.00 over the six arms**, no inversions
-(eval/train ≈ 0.4–0.7; scale 0 → 0 exact). A **positive control**: the pipeline transmits a
-data behaviour into eval behaviour with perfect rank fidelity, so *"the arms didn't learn the
-data"* is not available as an explanation for base ≫ arms. It is nonetheless **score-blind**:
-Spearman(score, eval share) = +0.61 with base, **+0.37 without (n=6, n.s.)**, and the two arms
-generating the most reasoning prose score 63 and 62.
+**⇒ `think` transmits gradedly from data to behaviour.** Think-heavy sources give think-heavy
+models (22.3 → 15.9, 20.5 → 12.9), think-light give think-light (8.5 → 3.7), scale 0 → 0
+exact. Spearman = +1.00 over the six arms, but **the arms are not independent**: collapsing
+the swezero lineage gives n=4, p=0.083, and also dropping scale's structurally-forced 0 → 0
+gives n=3, p=0.33 — so the honest form is "**3–4 independent sources ordered correctly,
+n.s.**", with the *effect sizes* carrying the conclusion (devils-advocate, PR #7 review).
+
+A **positive control for `think` specifically** — the arms demonstrably learned this
+behaviour in proportion to their data, so *"the arms didn't learn the data"* is not available
+as an explanation for base ≫ arms. Fidelity is **not** general: `think` +1.00,
+`file_editor` +0.54, `terminal` +0.37 — transmission degrades as the behaviour becomes
+environment-coupled, i.e. **what copies best is what matters least**.
+
+It is nonetheless **score-blind**: Spearman(score, eval share) = +0.61 with base, **+0.37
+without (n=6, n.s.)**; and in the only slice where data lineage is held fixed (the swezero
+lineage) more think prose goes with a *lower* score — 12.9% → 77, 15.9% → 63, 15.7% → 62.
+Rank ordering, hence every Spearman here, is **unchanged** on main-worker's harness-corrected
+board (rebench 76, coderforge 50, scale 36).
 
 Full detail, tool-by-tool transmission fidelity, and the method caveats (including two
 self-corrections: round-robin stride aliasing in the pooled caches, and BPE tool-name
