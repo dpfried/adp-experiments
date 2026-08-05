@@ -357,10 +357,26 @@ def main():
         print(f"\n  {hi} vs {lo} -- {what}   paired n={len(inter)} "
               f"(of {len(cov[hi]['have'])} / {len(cov[lo]['have'])} transcripts)")
         if cross_model:
-            print("      NOTE: cross-model. base drops ~40% to the iteration cap "
-                  "(its LONGEST runs) vs ~0% for\n            the arm, so this is a "
-                  "DIRECTIONAL LOWER BOUND, not a point estimate -- the true\n"
-                  "            base-vs-arm gap is if anything larger.")
+            # Corrected once F completed. The cap-survivorship caveat belongs to
+            # E (stub), which loses ~half its instances to the iteration cap, NOT
+            # to F: F hit the cap 0/100 and has a transcript for all 100. So F-B
+            # is a COMPLETE paired comparison, and its lower-bound direction comes
+            # from the aggregator tie-break alone (15/100 good patches discarded,
+            # arm 0/400) -- which the repaired column addresses directly.
+            capfrac = 100.0 * len(cov[hi]["capped"]) / max(1, len(cov[hi]["all"]))
+            if capfrac >= 5.0:
+                print(f"      NOTE: cross-model AND survivorship-truncated -- {hi} "
+                      f"lost {capfrac:.0f}% of instances to the\n            iteration "
+                      f"cap (its LONGEST runs), so the surviving pairs are not a "
+                      f"random subset.\n            Read as a bound, not a point "
+                      f"estimate.")
+            else:
+                print(f"      NOTE: cross-model, but {hi} is COMPLETE "
+                      f"({len(cov[hi]['have'])} transcripts, {capfrac:.0f}% cap-hit), "
+                      f"so there is no\n            survivorship truncation here. The "
+                      f"lower-bound direction comes only from the\n            "
+                      f"aggregator tie-break, which depresses base and is 0/400 on "
+                      f"the arm -- see the\n            repaired column.")
         def paired_delta(vals):
             """mean of hi, mean of lo, mean paired diff, and its SE.
 
