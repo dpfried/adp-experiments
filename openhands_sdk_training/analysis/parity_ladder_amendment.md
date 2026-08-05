@@ -123,3 +123,60 @@ Primary endpoint remains **behavioural** (`verified_after_edit`, `ran_any_test`,
 underpowered**: at a 10–16% base rate and n=100, sd ≈ 3.0–3.7, so only swings
 ≳6–7/100 clear 2sd. Stated again here so a null on score is not read as
 evidence of absence.
+
+## Addendum — the base iteration cap (filed 03:35 UTC, still pre-rollout)
+
+Raised by agent-b17cac1e on the coordination channel after submission but
+before any cell produced output. Independently re-verified here against the
+existing board runs rather than taken on report:
+
+| | instances with a transcript | only in `output_errors.jsonl` | of those, `MaxIterationsReached` |
+|---|---|---|---|
+| base `v2_init_4b` | **300 / 500** | **200 (40.0%)** | 155 |
+| arm `v2_swezero_4b` | 500 / 500 | 0 | 0 |
+
+The dropped rows carry `history_len: 0`, `git_patch: None`, and
+`error: "…MaxIterationsReached: Agent reached maximum iterations limit (500)"`.
+They are not blank *rows in* `output.jsonl` — they are **absent from it** and
+present only in the error file. Scoring already reads both files
+(`run_score_shards.sbatch` concatenates them), so **score is over 500 while
+every behavioural statistic is over ~300**. That asymmetry applies to every
+base number in the campaign, not just to this probe.
+
+Consequences for cells E and F, registered now:
+
+1. **Base behavioural n is ~60/cell, not 100.** At n=100 expect ~40 instances
+   with no transcript. Any E/F behavioural proportion must state its surviving
+   denominator; comparing a base proportion against an arm proportion without
+   doing so compares ~60 against 100.
+2. **The survivors are top-truncated.** The dropped instances are base's
+   *longest* runs by construction — they were dropped for running too long. So
+   base's tool-share and depth profiles are conditioned on "did not exhaust the
+   budget," and are biased toward shorter trajectories. This is the sharpest
+   available caveat on agent-b's item 5 (base 45.8% `terminal` / 16.2% message
+   content vs arms' `file_editor` dominance): that contrast is measured on
+   base's shorter 60%.
+3. **E vs F must be compared on the intersection.** Only instances with a
+   transcript in *both* E and F enter any behavioural diff, and the intersection
+   size is reported alongside every number. Comparing E's survivors against F's
+   survivors as two independent samples would let a shift in *which* instances
+   survive masquerade as a shift in behaviour.
+4. **Cap-hit rate becomes a registered secondary outcome per cell**, reported
+   for all six cells, not only base.
+
+**New prediction L3 (placebo / plumbing check).** The 500-iteration cap counts
+**agent iterations, not tokens**, so trimming 4 tokens per assistant turn has no
+mechanism by which it should move the cap-hit rate. Registered: |cap-hit(F) −
+cap-hit(E)| ≤ 8pp.
+*If falsified* — the cap-hit rate moves substantially between E and F — then
+something larger than a 4-token trim changed, and the correct response is to
+**inspect the rendered prompts and the vLLM logs before interpreting any E/F
+result**. In that world an E−F resolve-rate delta is confounded by how much
+budget each condition got, not by serving format, and must not be reported as a
+format effect. This is the cheapest available guard against the ladder silently
+measuring budget instead of parity.
+
+Note this cuts against a reading of the existing board: base's 119/500 is
+achieved while 40% of its instances never finish. Whether that makes base's
+score an under- or over-statement is not something this probe measures, and I
+am not claiming it does.
