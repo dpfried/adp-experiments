@@ -1252,10 +1252,10 @@ Three observations, ordered by how much weight they can bear:
    concentrates thinking (58% of instances, 13.4 calls each) while the arms spread it thin
    (~98% of instances, ~2.5 calls each). Same pattern as the verify loop in §17 — the
    behaviour is present in the data but not reproduced at rate.
-3. **Spearman(score, think-calls/instance) = +0.60** across the 7 models — the **first**
+3. **Spearman(score, think-calls/instance) = +0.57** across the 7 models — the **first**
    behavioural axis with a *positive* sign (depth was −0.32, verification −0.32/−0.43).
    **But this is driven almost entirely by base being an outlier**: excluding base it falls to
-   **+0.36**, n = 6, nowhere near significant. Base beats the arms on nearly every axis, so
+   **+0.31**, n = 6, nowhere near significant. Base beats the arms on nearly every axis, so
    any base-inclusive correlation is weak evidence. **Not** carried as a mechanism.
 
 ### 19.4 Bottom line
