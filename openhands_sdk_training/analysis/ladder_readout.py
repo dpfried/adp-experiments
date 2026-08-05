@@ -163,6 +163,35 @@ def read_score(root, tagbase, suffix=""):
     return resolved, scored
 
 
+def count_retried(root, tagbase):
+    """Instances that got a 2nd or later critic attempt, i.e. the ONLY instances on
+    which the aggregated score and the attempt-1-only score can possibly differ.
+
+    Used as an exact validity check on the attempt-1 batch, not as a heuristic:
+    |aggregate_resolved - attempt1_resolved| <= count_retried() is an identity, so a
+    violation means the attempt-1 scoring is corrupt rather than informative. The
+    live risk is cross-cell Apptainer sandbox collision -- every ladder cell scores
+    the SAME instance set and the scoring sbatch prunes sandboxes keyed by
+    instance_id alone, so a sandbox deleted mid-verify yields a spurious
+    `unresolved` that would depress every cell and mimic a real effect.
+    """
+    ids = set()
+    for sh in SHARDS:
+        d = os.path.join(root, "runs", f"out_{tagbase}__s{sh}")
+        for f in glob.glob(os.path.join(d, "**", "output.critic_attempt_*.jsonl"),
+                           recursive=True):
+            n = os.path.basename(f).rsplit("_", 1)[-1].split(".")[0]
+            if not n.isdigit() or int(n) < 2:
+                continue
+            for line in open(f):
+                line = line.strip()
+                if not line:
+                    continue
+                try: ids.add(json.loads(line)["instance_id"])
+                except Exception: pass
+    return ids
+
+
 def _patchlen(r):
     tr = r.get("test_result") if isinstance(r.get("test_result"), dict) else {}
     return len((tr.get("git_patch") or r.get("git_patch") or ""))
@@ -429,6 +458,46 @@ def main():
         print("COMPUTE-MATCHED RUNGS (attempt 1 only: 1 rollout/instance, temp 0, no selection)")
         print("=" * 100)
         print(f"  cells with attempt-1 scoring: {' '.join(a1keys)}")
+
+        # Validity gate, registered in the amendment before these scores existed.
+        # Aggregate and attempt-1 differ only on retried instances, so a movement
+        # larger than the retry count is impossible and indicts the scoring run.
+        print()
+        print("  VALIDITY GATE (|agg - a1| <= #retried is an identity, not a band):")
+        bad = []
+        for c in a1keys:
+            ra, na = sc.get(c, (set(), 0))
+            r1, n1 = sc.get(c + "@1", (set(), 0))
+            if not na or not n1:
+                continue
+            retried = count_retried(root, _tag[c])
+            move = abs(len(ra) - len(r1))
+            ok = move <= len(retried)
+            flag = "ok" if ok else "!! IMPOSSIBLE"
+            if not ok:
+                bad.append(c)
+            print(f"    {c}: agg {len(ra):3} vs a1 {len(r1):3}  |move|={move:3} "
+                  f" retried={len(retried):3}  {flag}")
+            # On a NON-retried instance, agg and a1 score the byte-identical
+            # rollout, so any disagreement is scoring non-reproducibility. A couple
+            # of these are expected from genuinely flaky tests; many indicate the
+            # sandbox collision. Reported either way, hard-failed only past
+            # tolerance, since the benign explanation is real at small counts.
+            TOL = 2
+            disagree = ((ra - r1) | (r1 - ra)) - retried
+            if disagree:
+                mark = "!! ABOVE TOLERANCE" if len(disagree) > TOL else f"(<= tol {TOL}, flaky tests plausible)"
+                if len(disagree) > TOL:
+                    bad.append(c)
+                print(f"       {len(disagree)} instance(s) disagree on an identical, "
+                      f"never-retried rollout {mark}")
+        if bad:
+            print("  !! GATE FAILED for cells: " + " ".join(sorted(set(bad))))
+            print("  !! Do NOT interpret the matched rungs below. The most likely cause is\n"
+                  "  !! cross-cell sandbox collision (all cells share one instance set).\n"
+                  "  !! Re-run the attempt-1 scoring serially and re-read.")
+        else:
+            print("  gate passed for all scored cells.")
         for hi, lo, what in [("B", "A", "stub removed"),
                              ("C", "B", "wrapper & path matched"),
                              ("D", "C", "prohibition & 5-phase list"),
