@@ -465,6 +465,24 @@ the original job: the scoring sbatch prunes Apptainer sandboxes keyed by
 `instance_id` alone, so two concurrent jobs scoring the same instance would
 delete each other's sandbox.
 
+### Outcome of the repair on F — final, both shards scored
+
+| shard | discarded good patches | rescued by repair |
+|---|---|---|
+| `F__s00` | 6 | **0 / 6** |
+| `F__s01` | 9 | **2 / 9** |
+| F total | 15 / 100 | **2 / 15** |
+
+**F = 27/100 as-harness, 29/100 repaired.** Both numbers are now final; an
+earlier channel post said "29 can only go up" because s00's repair pass was
+still running — it did not go up. Note what the 2/15 means: the tie-break was
+throwing away real patches (15 of them, up to 12.8 KB), but 13 of those 15
+patches would not have resolved their instance anyway. The defect is real and
+the bias direction is real; on this cell its *magnitude* on score turned out to
+be +2. That is a finding about the patches, not a reason to stop repairing —
+15/100 discarded is the exposure, and which 15 get discarded is arbitrary with
+respect to correctness.
+
 **This is the fifth silent-degradation defect in this pipeline in one day** —
 partial-output scoring, a missing merge step, the `n_think_calls` typo, an
 over-broad composite flag, and now a patch-blind tie-break in the harness
@@ -542,7 +560,8 @@ more iterations to get nowhere, and 32% of the time it runs out.
    and should not have made in a document whose entire subject is
    pre-registration integrity.
 4. **The two known biases on F both still point the same way.** F is depressed by
-   the aggregator tie-break (15/100 discarded good patches, Addendum 5) and E by
+   the aggregator tie-break (15/100 discarded good patches, Addendum 5 —
+   measured cost on score now known: **+2**, 27 → 29) and E by
    cap-survivorship. Neither touches the arm cells. F−B stays a **directional
    lower bound**.
 5. **L3 did its job.** It was registered as the cheapest available guard against
