@@ -561,12 +561,12 @@ training analog — loss-bearing tokens between `<|im_start|>assistant\n` and th
 **And every sample inspected is a condensation summary, not narration** — `USER_CONTEXT:` /
 `TASK_TRACKING:` / `## Context-Aware State Summary`, e.g.:
 
-```
+~~~
 "\n\n## Context-Aware State Summary\n\n**USER_CONTEXT:** Fix inverted distance calculation
  logic in DeepDiff when using `ignore_order=True` with custom `iterable_compare_func`…"
 "\n\n```yaml\nUSER_CONTEXT: Fix thread-local request propagation issue in Pyramid's
  Configurator with autocommit=True…"
-```
+~~~
 
 So the ADP corpus supervises assistant prose **only** as periodic state summaries, and **never**
 as commentary attached to a tool call. The lesson SFT teaches is *emit a tool call and nothing
