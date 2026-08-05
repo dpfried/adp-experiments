@@ -1192,19 +1192,27 @@ used. Therefore:
 | **training** (`qwen3_5_nothink`) | `<\|im_start\|>assistant\n` → content |
 | **eval** (stock template, `enable_thinking:false`) | `<\|im_start\|>assistant\n<think>\n\n</think>\n\n` → content |
 
-Every assistant turn at eval is prefixed with a short token sequence the SFT'd models **never
-saw in that position**. This affects **all six SFT arms**.
+Every assistant turn at eval is prefixed with **exactly 4 tokens**
+(`['<think>', '\n\n', '</think>', '\n\n']` = ids `[248068, 271, 248069, 271]`, measured) that
+the SFT'd models **never saw in that position**. This affects **all six SFT arms**.
 
 **Why it is worth flagging rather than filing away:** the mismatch is **asymmetric in base's
 favour**. Base θ₀ is stock Qwen3.5-4B-Instruct, whose non-thinking mode was post-trained with
 exactly this prefix — base is evaluated **in-distribution**; every arm is evaluated
-**out-of-distribution**. With Lever A refuted (§16), the verification hypothesis refuted
+**out-of-distribution**. **Precision added 2026-08-04:** the eval *treatment* is
+**identical** for base and arms (same `llm_config.json` thinking fields, verified across all
+10 base shards; `reasoning_parser=''` in both; **no `--chat-template` override for either** —
+the lone `--chat-template` hit in the vLLM logs is an informational line about
+`--chat-template-content-format` present in base and arm logs alike). The asymmetry is at
+**training** time. And "base is in-distribution" is an **[INFERENCE]** from the fact that its
+shipped template prescribes the stub — Qwen's actual post-training format is **not verified
+here**. With Lever A refuted (§16), the verification hypothesis refuted
 (§17), and Lever B a no-op (§18), "no behavioural axis explains the base ≫ arms gap" (§17) —
 and a formatting artifact is now a live, untested alternative to a data-quality explanation.
 
 **Pre-committed limits on this claim** (stated before any test is run):
 * It **cannot** explain arm-vs-arm ordering — all arms share the mismatch identically.
-* A constant 5-token prefix may well be harmless; SFT models are often robust to it. The
+* A constant 4-token prefix may well be harmless; SFT models are often robust to it. The
   effect size is **unmeasured**. Do **not** report this as "the answer" to the v2 gap.
 * Cheap falsifier: re-serve one arm with `--chat-template` pinned to a jinja that omits the
   empty think block (matching training), on a fixed subset, and compare paired. One eval.
@@ -1266,3 +1274,23 @@ Three observations, ordered by how much weight they can bear:
 * One genuine defect surfaced: **the empty-`<think>` prompt prefix is present at eval and
   absent in training, for every SFT arm but not for base.** Confirmed to exist; effect
   unmeasured; one paired eval would settle it.
+
+### 19.5 Follow-up (2026-08-04) — mechanism detail, now in a standalone report
+
+Full write-up with verbatim examples: **`adp_thinking_traces_report.md`**. Additions beyond
+§19.1–19.4, all measured:
+* **`reasoning_tokens` = 0 for all 7 models** across **81.6M completion tokens** — and this
+  is not circular, since `reasoning_parser=''` means vLLM does not strip reasoning.
+* **The `think` tool is a no-op scratchpad.** It returns a fixed `ThinkObservation`,
+  `"Your thought has been logged."`, `is_error: false`; nothing in the environment changes.
+  Cost is one round-trip (thought median 1,251 chars base / 1,469 swezero).
+* **Nothing produces text inside the eval `<think>` stub** — it is literal template output
+  appended to the *prompt*; generation begins after `</think>`, so it is empty by
+  construction. The tool's text lives in `<parameter=thought>`, not in `<think>` tags.
+* **Malformed `think` calls:** base **833 / 6,676 (12.5%)**, ~50% of its 1,674 agent errors,
+  vs ~1% for the arms — Pydantic `ThinkAction.thought Field required`. The best model is the
+  worst at formatting this tool and still wins by 42 points, so tool-call hygiene is **not**
+  a mechanism.
+* **Counting caveat:** count `think` structurally via `role == "function_call"`; the
+  `<function=think>` XML is generated at tokenization, so grepping raw jsonl returns 0.
+
