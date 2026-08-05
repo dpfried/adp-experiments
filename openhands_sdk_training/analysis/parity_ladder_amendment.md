@@ -291,3 +291,22 @@ override — `nostub.jinja` only edits the `enable_thinking=false` branch, and t
 default branch opens a real `<think>` for the model to fill. A probe without the
 kwarg tests the wrong branch and would wrongly read as "the override did
 nothing."
+
+### What the paired SE is not (limitation, per devils-advocate)
+
+Added **after launch but before any results existed**; it states a limitation of
+an already-registered instrument and changes no prediction, threshold, or
+decision rule.
+
+The paired-difference SE is the right gate for the mean-effect question asked
+here, and it is self-correcting in the useful direction: decode run-noise
+inflates `sd(dᵢ)`, which inflates the SE, which *widens* the `2·SE`
+uninformative band — so nondeterminism makes the test more conservative, never
+less. Run-noise cannot bias the mean paired Δ (symmetric flips cancel); it can
+only widen the band.
+
+But the SE **bundles run-noise with genuine per-instance treatment
+heterogeneity**, and therefore is *not itself a measurement of run-noise*. Only
+a same-condition replicate (E vs E′ on identical settings) could decompose the
+two. No such replicate is being run, and none is needed for this decision — but
+the SE must not be quoted as "the harness's run-noise."
