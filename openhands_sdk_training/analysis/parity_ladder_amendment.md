@@ -570,6 +570,41 @@ more iterations to get nowhere, and 32% of the time it runs out.
    treatment rather than the plumbing is what a placebo check is *supposed* to be
    able to tell you, and only because S0 had already excluded the alternative.
 
+### 6a. E's failures are a *mixed* taxonomy — and where the cap-hits hide
+
+Added after a peer scan of E reported "0 MaxIterationsReached across 146 base
+rollouts." That scan read `output.jsonl`. **Capped instances never reach
+`output.jsonl`** — the SDK harness writes them to `output_errors.jsonl` in the
+same directory, and the two id sets are disjoint (verified: `overlap = 0` on
+both E shards). Searching only the transcripts searches the one file from which
+cap-hits are definitionally absent. Recording it because it is the same class of
+error as the ones this document already catalogues, and because it would have
+retracted a true finding.
+
+Full untruncated `error` strings, both E shards, 53 rows over 99 instances seen:
+
+| E failure mode | n | % of seen |
+|---|---|---|
+| **`MaxIterationsReached: … maximum iterations limit (500)`** | **35** | **35.4%** |
+| instance timeout 14400s (wallclock) | 5 | 5.1% |
+| remote conversation got stuck | 5 | 5.1% |
+| run timeout 3600s (wallclock) | 4 | 4.0% |
+| `OSError: [Errno 28] No space left on device` | 3 | 3.0% |
+| remote conversation ended with error | 1 | 1.0% |
+| — F, same harness/cap/shards/weights, nostub | **0** | **0.0%** |
+
+Two things follow, and they must not be merged:
+
+* The cap-hit claim **strengthens**: 35.4% (stub) vs 0.0% (nostub) on the same
+  harness `sdk_43376f1`, same `maxiter_500`, same shard pairs, same weights.
+  35.4% is if anything above the θ₀ board run's 26.2%, and it reproduces on new
+  hardware and a new date, so the ~26% is a property of the **stub**, not of
+  that one run.
+* **But E's failure set is not pure cap.** 18 of 53 are wallclock or infra,
+  including three ENOSPC. Quoting "E fails half the time" bundles a disk-full
+  node into a behavioural claim. Every cap number in this document means
+  `MaxIterationsReached` specifically and should be read that way.
+
 ### What would falsify this reading
 
 If E's native-`<think>` count rises materially above 0 as the remaining ~66
