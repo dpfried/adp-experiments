@@ -340,7 +340,7 @@ def main():
     print("SCORE (over ALL instances incl. no-transcript rows; scoring reads both files)")
     print("=" * 100)
     print(f"{'cell':4} {'resolved':>9} {'scored':>7} {'rate':>7} "
-          f"{'emptyPatch':>11} {'discarded':>10} {'repaired':>18}")
+          f"{'emptyPatch':>11} {'discarded':>10} {'repaired':>18} {'attempt1':>12}")
     warn = []
     for c, tagbase, model, *_ in CELLS:
         res, n = read_score(root, tagbase)
@@ -359,8 +359,18 @@ def main():
         sc[c] = (res, n)
         if disc and rn:
             sc[c + "*"] = (res | rres, n)
+        # Attempt-1-only scoring: the COMPUTE-MATCHED contrast (amendment
+        # Addendum 7). One rollout per instance, temp 0, no critic selection, in
+        # every cell -- unlike the aggregated column, where the critic handed
+        # base 2.32 rollouts/instance and the arm ~1.04.
+        a1res, a1n = read_score(root, tagbase, "_a1")
+        if a1n:
+            sc[c + "@1"] = (a1res, a1n)
+            a1col = f"{len(a1res):3} / {a1n:3}"
+        else:
+            a1col = "-"
         print(f"{c:4} {len(res):9} {n:7} {pct(len(res), n):>7} "
-              f"{empty:11} {disc:10} {pair:>18}")
+              f"{empty:11} {disc:10} {pair:>18} {a1col:>12}")
     print("  discarded = scored record has an empty patch though an earlier critic\n"
           "  attempt produced one (amendment Addendum 5). Measured, never assumed:\n"
           "  the harness tie-break is patch-blind and only bites models that retry,\n"
@@ -407,6 +417,41 @@ def main():
         flip_up = len((rh - rl) & inter); flip_dn = len((rl - rh) & inter)
         print(f"  {hi}-{lo:2} {what:32} score: {ph:3} vs {pl:3} on n={len(inter):3} "
               f"delta={d:+3}   (gained {flip_up}, lost {flip_dn})")
+
+    # --- COMPUTE-MATCHED rungs (amendment Addendum 7). Same paired-intersection
+    # rule, but over the attempt-1-only scorings, where every cell got exactly
+    # one temperature-0 rollout per instance and no critic selection. This is the
+    # contrast to quote for anything crossing the base/arm boundary.
+    a1keys = [c for c in "ABCDEF" if (c + "@1") in sc]
+    if a1keys:
+        print()
+        print("=" * 100)
+        print("COMPUTE-MATCHED RUNGS (attempt 1 only: 1 rollout/instance, temp 0, no selection)")
+        print("=" * 100)
+        print(f"  cells with attempt-1 scoring: {' '.join(a1keys)}")
+        for hi, lo, what in [("B", "A", "stub removed"),
+                             ("C", "B", "wrapper & path matched"),
+                             ("D", "C", "prohibition & 5-phase list"),
+                             ("C", "A", "L1: format rungs jointly"),
+                             ("F", "E", "stub removed (base)"),
+                             ("F", "B", "base vs arm, nostub [PRIMARY, matched]")]:
+            rh, nh = sc.get(hi + "@1", (set(), 0))
+            rl, nl = sc.get(lo + "@1", (set(), 0))
+            if not nh or not nl:
+                print(f"  {hi}-{lo:2} {what:40} (awaiting attempt-1 scoring)")
+                continue
+            a1h = read_attempt1(root, _tag[hi]); a1l = read_attempt1(root, _tag[lo])
+            inter = a1h["all"] & a1l["all"]
+            ph, pl = len(rh & inter), len(rl & inter)
+            b = len((rh - rl) & inter); c_ = len((rl - rh) & inter)
+            se = (b + c_) ** 0.5
+            sig = f"{abs(ph - pl) / se:.2f}" if se else "inf"
+            gate = "" if (se and abs(ph - pl) >= 2 * se) else "   (|net| < 2*SE: UNINFORMATIVE)"
+            print(f"  {hi}-{lo:2} {what:40} {pl:3} -> {ph:3} on n={len(inter):3} "
+                  f"net={ph - pl:+3}  b={b} c={c_}  SE={se:.2f}  {sig} sigma{gate}")
+        print("  Compare each line with its aggregated counterpart above. Where the two\n"
+              "  disagree, the aggregated number is the one carrying the unequal-rollout\n"
+              "  confound, not this one.")
 
     if not stats:
         print("\n(no stats.jsonl supplied -- behavioural section skipped)")
