@@ -1295,38 +1295,43 @@ Full write-up with verbatim examples: **`adp_thinking_traces_report.md`**. Addit
   `<function=think>` XML is generated at tokenization, so grepping raw jsonl returns 0.
 
 
-### 19.6 How much of the SFT gradient is `think`-tool prose? (2026-08-04, measured)
+### 19.6 `think`-tool token shares, training and eval (2026-08-04, measured)
 
-Follow-up question: at eval, *what* produces the text inside the `think` tool, and is that
-text supervised in training? Two texts, opposite answers — both measured.
+Follow-up: at eval, what produces the text inside the `think` tool, and is it supervised?
+Two texts, opposite answers; then the same measurement on the eval side.
 
-**(i) The `thought` argument.** Produced by the **model**, as ordinary completion text; vLLM's
-`qwen3_coder` tool parser (`--enable-auto-tool-choice`, sbatch:50) structures it into a tool
-call, which OpenHands validates into `ThinkAction` → `action.thought`. **It is supervised**,
-and it is a large share of the signal. Measured by locating the token subsequences for
-`<function=think>` (`[27, 1628, 28, 26003, 29]`) and `</function>` (`[510, 1628, 29]`) in
-`input_ids` and reading the label mask over the span — no char↔token mapping. First 600
-records of shard 0:
+**(i) The `thought` argument.** Produced by the **model** as ordinary completion text; vLLM's
+`qwen3_coder` parser structures it into a tool call → `ThinkAction` → `action.thought`.
+**It is supervised**, via exact `<function=think>`…`</function>` token spans read against the
+label mask (~790 recs/subset, contiguous windows across all shards):
 
-| subset | loss tokens | think spans | loss tokens in `think` | **share of ALL supervision** |
+| subset | loss tokens | spans | in `think` | **share of ALL supervision** |
 | --- | --- | --- | --- | --- |
-| swezero | 1,236,921 | 630 | 247,497 | **20.0%** |
-| coderforge | 1,486,600 | 541 | 197,798 | **13.3%** |
-| pooled220k / pooled55k | 1,403,565 | 403 | 156,135 | **11.1%** |
-| rebench | 1,588,800 | 322 | 127,146 | **8.0%** |
-| **scale** | 1,231,570 | **0** | **0** | **0.0%** |
+| v3_tokmatch | 2,361,217 | 1,316 | 527,286 | **22.3%** |
+| v3_maxpool | 2,400,856 | 1,294 | 516,459 | **21.5%** |
+| swezero | 1,557,501 | 795 | 319,338 | **20.5%** |
+| coderforge | 1,926,354 | 677 | 255,537 | **13.3%** |
+| pooled55k | 1,886,566 | 537 | 208,592 | **11.1%** |
+| pooled220k | 1,775,908 | 499 | 190,750 | **10.7%** |
+| rebench | 2,106,931 | 444 | 178,049 | **8.5%** |
+| **scale** | 1,684,767 | **0** | **0** | **0.0%** |
 
-Stable across sample size (swezero: 21.9% at n=150, 20.0% at n=600; v3_tokmatch 22.4% at
-n=150). ⇒ **~1/5 of swezero's and the v3 arms' entire SFT gradient teaches the model to write
-reasoning prose into a tool that does nothing.** The campaign does train on reasoning traces —
-packaged as tool calls, not native CoT. `scale` is the sole exception at 0%.
+Pooled matches the token-weighted prediction from its four sources (10.5% predicted).
 
-**(ii) The tool's return, `"Your thought has been logged."`** Produced by the **scaffold**, a
-constant. In training it arrives as `role: tool` and lands in the observation slot, which is
-**masked**: of the token spans found (`[7525, 3272, 682, 978, 13332, 13]`), **0 carry loss in
-any subset**. Correct behaviour for an observation; noted only because the two texts are easy
-to conflate.
+**(ii) The tool's return, `"Your thought has been logged."`** Scaffold-produced, lands in the
+observation slot, **masked — 0 loss-bearing tokens in every subset.**
 
-**Unverified oddity, flagged not asserted:** pooled220k and pooled55k report byte-identical
-figures on shard 0, which may mean a shared or prefix-identical shard rather than independent
-data. Not checked.
+**(iii) Eval side.** Reconstructing the emitted XML per `ActionEvent` over all 3,500 rollouts,
+`think` as a share of generated tokens: base **19.5%**, v3_tokmatch 15.9%, v3_maxpool 15.7%,
+swezero 12.9%, coderforge 5.4%, rebench 3.7%, scale 0.0%.
+
+**⇒ Spearman(train share, eval share) = +1.00 over the six arms**, no inversions
+(eval/train ≈ 0.4–0.7; scale 0 → 0 exact). A **positive control**: the pipeline transmits a
+data behaviour into eval behaviour with perfect rank fidelity, so *"the arms didn't learn the
+data"* is not available as an explanation for base ≫ arms. It is nonetheless **score-blind**:
+Spearman(score, eval share) = +0.61 with base, **+0.37 without (n=6, n.s.)**, and the two arms
+generating the most reasoning prose score 63 and 62.
+
+Full detail, tool-by-tool transmission fidelity, and the method caveats (including two
+self-corrections: round-robin stride aliasing in the pooled caches, and BPE tool-name
+detection dropping `file_editor`) are in `adp_thinking_traces_report.md` §3.4b–§3.4d.
