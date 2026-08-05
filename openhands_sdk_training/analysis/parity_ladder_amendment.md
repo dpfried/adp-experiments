@@ -669,10 +669,57 @@ being removed is base's. I expect it to remain clearly positive — F's 27
 resolves cannot all be selection artifacts when 29 of its 100 instances
 finalized at attempt 1 — but I am committing to reporting whatever it is,
 including the case where the gap collapses. If matched-compute F−B falls below
-~2·SE (roughly ±8/100 here), then **the campaign has no demonstrated
-within-harness base-vs-arm gap at matched compute**, and the correct statement
-becomes that the arms are not distinguishable from base rather than that base
-beats them.
+~2·SE (SE computed from the actual discordant pairs, not assumed), then **the
+campaign has no demonstrated within-harness base-vs-arm gap at matched compute**.
+~~and the correct statement becomes that the arms are not distinguishable from
+base rather than that base beats them.~~ **That last clause is too broad and is
+struck** — see 7a, registered before the scores exist.
+
+### 7a. How I will read the matched number, registered before it exists
+
+Written after devils-advocate pointed out that my registration above had one
+sentence that overreaches and one force I had not accounted for. Both corrections
+accepted; both change what a small result would license me to say, so they have
+to be on record *now*.
+
+**Correction 1 — the collapse branch was scoped wrong.** "The arms are not
+distinguishable from base" is a claim about the campaign; what this experiment
+can speak to is 100 instances, one harness, one arm cell. The board number
+(θ₀ = 119/500 vs swezero 77/500) is **single-rollout by construction on both
+sides** — `out_v2_init_singlerun_4b` has zero critic-attempt files — so it never
+had this confound to lose, and a small matched F−B cannot retract it. If the gap
+collapses, the licensed statement is *"no demonstrated base-vs-arm gap at pass@1
+on these 100 instances under this harness"*, and the board's 500-instance result
+stays in its own box. Different n, different instance set, and (see below)
+different base.
+
+**Correction 2 — two forces pull on the magnitude in opposite directions, and I
+had only counted one.** Removing attempts 2–3 removes base's compute advantage
+(pushes F−B **down**, which is what I registered). But it also removes the
+patch-blind tie-break defect, which is *measured* to cost F 2 points
+(27 as-harness → 29 repaired, Addendum 5), and separately ladder-F is the
+**un-gagged** base while the board's 119 is the gagged one, i.e. the ladder's
+base should if anything be the stronger of the two. Both of those push **up**.
+So "smaller than +19" is my expectation, not a boundary: **matched F−B landing at
+or above +19 is a legitimate outcome of this design, not a sign something broke.**
+
+Registered readings, by band (SE from the observed discordant pairs):
+
+| matched F−B | what I will conclude |
+|---|---|
+| ≥ +19 | the aggregated gap was not compute-inflated on net; the tie-break deflation and the retry inflation roughly cancelled. Report matched as the headline, aggregated as the confounded companion. |
+| between 2·SE and +19 | gap real, aggregated form partly compute-inflated. Headline the matched number and state the inflation size. |
+| positive but < 2·SE | directionally consistent with the board's gagged-base gap, underpowered at n=100. **Not** "no gap" — "not independently significant at this n." |
+| ≤ 0 | a genuine surprise *against the board*, not a confirmation of the arms. Owed a reconciliation, not a headline: shard-00/01 instance-set representativeness, n=100 power, and the fact that F is the un-gagged base and should have been the easier direction. I would report it as an unresolved conflict between two measurements, and say so. |
+
+**A third finding, not about the ladder.** The critic rejects base's attempt 1
+**71/100** and the arms' **2–5/100** under byte-identical config. That asymmetry
+is the mechanism of this confound, but it is also an unmeasured *model-dependence
+in the critic itself*, ~15–35×. Anything that reuses this critic — retry gating,
+data filtering, an outcome-labeler — inherits a component that judges base and
+SFT'd outputs by what is evidently not the same standard, for reasons nobody has
+characterised. Flagging it here because it outlives this ladder; it is not
+something I have scope to chase.
 
 ### 6b-pre. How the harness writes results, and the matched form of L3
 
