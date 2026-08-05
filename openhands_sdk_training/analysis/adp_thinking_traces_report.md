@@ -86,8 +86,8 @@ maximum iterations limit (500)"` — and a **6,309-character graded patch**. It 
    to any measured behaviour. No arm has a single such resolve.
 4. **The depth gap is larger than reported, and base is the only model the cap binds on.**
    Kept-run action counts, p50: base **216**, rebench 203, scale 200, coderforge 190,
-   swezero 62, v3_tokmatch 53, v3_maxpool 50 — *before* counting the 40% of base runs that
-   ran past the cap. Two things are true at once: the cap is a shared, fair budget, and base
+   swezero 62, v3_tokmatch 53, v3_maxpool 50 — *before* counting the 40% of base runs with no
+   transcript, whose largest group (131/500 = **26.2%** of all base runs) ran past the cap. Two things are true at once: the cap is a shared, fair budget, and base
    is the only model that exhausts it, so base's 119 is measured **with a truncation
    handicap** and would plausibly be higher under a larger cap.
 
@@ -95,22 +95,57 @@ maximum iterations limit (500)"` — and a **6,309-character graded patch**. It 
 No arm-vs-arm comparison, including the Lever-A refutation — swezero, v3_tokmatch and
 v3_maxpool have **zero** blanks between them.
 
-#### Scope limit, added same day: the cap-hit rate is a property of *that run*, not of base
+#### 0b.1 Retracted: my own "the cap-hit rate is a property of *that run*" scope limit
 
-The parity ladder (`sdk_43376f1`, same `maxiter_500`) is re-running base on 100 of the same
-instances. Across **146** base rollouts under that newer harness — cell F complete (100/100)
-and cell E interim (46) — there are **0 blank records and 0 `MaxIterationsReached`**. At the
-board's 26% cap-hit rate ~38 were expected. Base's *depth* reproduces (cell E p50 **223**
-actions vs the board's 216), so this is not a behaviour change; the newer harness is simply
-not losing these runs.
+**This subsection previously claimed that the cap-hit rate did not reproduce, and it was
+wrong.** The claim was: across 146 parity-ladder base rollouts there are "0 blank records and
+0 `MaxIterationsReached`" where ~38 were expected, so the ~40% was an artifact of the old run.
 
-So consequence 4's "base is the only model the cap binds on, at ~40%" must be read as **a
-property of the specific run that produced the 119**, not a stable property of the model.
-Consequences 1–3 are unaffected, because they are statements about *those* artifacts: the
-board's base row really is 300 transcripts, 26 of its resolves really are unattributable, and
-the token spend behind the 119 really was never controlled. But do not carry the 40% forward
-as a prediction — and note that whatever caused it (the 20 `OSError`s and 33 retry failures
-sit next to the 131 cap-hits) may have inflated the cap-hits too.
+The error: I counted from `output.jsonl`. **Instances that terminate in error are not written
+to `output.jsonl` at all** — they go to `output_errors.jsonl` in the same directory. So a
+`MaxIterationsReached` search over `output.jsonl` returns zero *by construction*, for any cell,
+always. I searched the one file from which the thing I was looking for is definitionally
+absent, and read the zero as evidence. Caught by the ladder owner within the hour; this is
+the second time this defect has produced a published-then-reverted conclusion in this
+campaign, which is why it is now enforced in code rather than in prose —
+[`ANALYSIS_HOUSE_RULES.md`](ANALYSIS_HOUSE_RULES.md) rule 1, `load_rollouts.py`.
+
+**Measured** — re-run through the loader on the frozen, complete, attempt-matched file
+(`output.critic_attempt_1.jsonl`, one row per instance, exact coverage of both select shards,
+`strict=True` passing; independent of the two earlier hand-counts):
+
+| base cell, attempt 1 | n | ok | **cap500** | timeout | stuck | ENOSPC | other | has patch | transcript |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| **E** base + **stock (stub)** template | 100 | 46 | **35 (35.0%)** | 6 | 5 | 3 | 5 | 74 | 46 |
+| **F** base + **nostub** template | 100 | 100 | **0 (0.0%)** | 0 | 0 | 0 | 0 | 82 | 100 |
+
+Same harness `sdk_43376f1`, same `maxiter_500`, same 100 instances, same base weights, same
+critic config, one axis different. Board base row for comparison: 131/500 = 26.2% cap-hit.
+
+**Inferred** — the cap-hit phenomenon is real and reproduces on new hardware, a new harness and
+a new date; what my retraction got right is only that it is not an unconditional property of
+"base." It tracks the **empty `<think>` stub** (35.0% with, 0.0% without), which is the same
+train/eval prompt mismatch §2 describes. Consequence 4 therefore stands with a sharper
+attribution: base's 119 was measured with a truncation handicap, and the handicap is
+stub-linked. Residual confounds I have *not* excluded: the two templates change tokens-per-turn
+and hence turns-per-cap differently, and I have one nostub cell, not a series — so "the stub
+causes the capping" is one mechanism consistent with a 35-vs-0 split, not the only conceivable
+one. (Rule 4: two mechanisms checked, residual unbounded.)
+
+Consequences 1–3 were never in question and are untouched — they are claims about *those*
+artifacts: the board's base row really is 300 transcripts, 26 of its resolves really are
+unattributable, and the token spend behind the 119 really was never controlled.
+
+Two further measured items from the same re-read, both of which cut against reading cell E
+naively:
+
+- **E's error mix is not pure capping.** 35 cap-hits, but also 6 timeouts, 5 stuck, 3 ENOSPC
+  (a node-local `/scratch` fill — `/checkpoint` was at 35%), 5 other. Anyone quoting "cell E
+  fails half the time" is bundling a disk-full node with the finding.
+- **The depth gap in consequence 4 is understated, not overstated.** E's p50 of 223 actions is
+  computed over its **46** transcript-bearing runs — which *exclude* the 35 that ran out of
+  iterations, i.e. exactly its longest runs. F's 233 is over a complete 100. Both are
+  top-truncated reads of a distribution whose tail is the interesting part.
 
 ---
 
@@ -734,12 +769,46 @@ separates the 16.2% narration channel from the 19.5% `think` channel. It also do
 prose emitted *after* `</tool_call>`; §3.4e shows base essentially never does that, but the
 blocked run should be re-measured rather than assumed.
 
-**Matched control already scheduled.** Cell **E** of main-worker's `run_parity_ladder.sbatch`
+**Matched control already on disk.** Cell **E** of main-worker's `run_parity_ladder.sbatch`
 (base, stock template, harness `default.j2`, select shards `00`/`01`, n=100) is the exact
-comparator. The blocking cell is the identical invocation with
+comparator. The blocking cell (**G**) is the identical invocation with
 `CHAT_TEMPLATE=$P/prefill_toolcall.jinja` — one flag, one axis, same instance IDs. Cost: 2
 jobs × 1 A100. Running it *after* E lands is strictly better than running it standalone
 against the 500-instance board, which uses different IDs.
+
+**G must be scored attempt-1 only, against E's attempt 1.** The harness retries whichever
+instances its critic rejects, and attempts ≥2 sample at temperature 0.1 — under identical
+config it rejected base's first attempt 71/100 in cell F but only 15/100 in cell E, so *two
+cells of the same model are not compute-matched by default*, let alone two different prompts.
+E's `output.critic_attempt_1.jsonl` is already complete and frozen (100/100 unique, exact
+select coverage), so the control does not depend on E's remaining attempts finishing.
+See [`ANALYSIS_HOUSE_RULES.md`](ANALYSIS_HOUSE_RULES.md) rules 1–2.
+
+**Statistical power — computed before launch, exact conditional McNemar, α=0.05 two-sided,
+paired on identical instances, base rate taken as 24%.** The relevant noise floor is the
+~3%-of-instances SBV label-flip rate (generation *and* grading both flip labels), which enters
+as symmetric discordance and costs ~55% of the sensitivity:
+
+| n (instances) | MDE at 80% power, noiseless | **MDE at 80% power, 3% flip floor** |
+| --- | ---: | ---: |
+| **100** (shards 00+01 — what G buys) | 7.8 pp | **12.1 pp — i.e. 24% → 11.9%, a halving** |
+| 200 | 3.9 pp | 7.5 pp (31% relative) |
+| 500 (full board) | 1.6 pp | 4.1 pp (17% relative) |
+
+Power at n=100 with the floor: halving **0.79**, 38% relative drop **0.58**, 25% relative
+**0.31**, 12% relative **0.09**.
+
+⇒ **G at n=100 is powered to detect a halving and nothing finer.** That is the right first
+question — narration is 16.2% of base's output and its resolve rate climbs 22.7% → 49.3% across
+narration quartiles, so the load-bearing-CoT hypothesis predicts a large effect — but the null
+must be pre-registered as **"no *large* effect,"** never as "no effect." Resolving a 25%
+relative drop needs all ten shards, i.e. 5× the GPU.
+
+**The behavioural outcome sits in a completely different power regime, and it is the half that
+cannot come back ambiguous.** "Did the block actually work" is measured over ~20k action events
+(48.2% of base's currently carry prose), so it is decisive regardless of what the score does.
+G is well powered for *did the intervention fire* and only large-effect-powered for *did it
+matter* — report the two separately and do not let the first stand in for the second.
 
 **Second, cheaper axis, needing no template at all:** drop `think` from the offered tool
 list, which removes the other 19.5%. The two together give a 2×2 of
@@ -755,12 +824,15 @@ decorative and the base ≫ arms gap is elsewhere.
 (a) Forcing a tool call every turn is itself a distribution shift, so a drop is not
 automatically evidence that the *reasoning* mattered. (b) The model may **relocate** the
 narration into the `think` tool or into a parameter string — directly measurable, and the
-first thing to check. (c) Base already hits the 500-iteration cap on 40% of instances (§0b);
-changing tokens-per-iteration perturbs that, so **cap-hit rate must be reported alongside
-resolve rate** or the two effects are confounded.
+first thing to check. (c) Base hits the 500-iteration cap on **35.0%** of instances in the
+matched control cell E (§0b.1), and the stub-vs-nostub split shows this rate is highly
+sensitive to the prompt; prefilling `<tool_call>\n` changes tokens-per-iteration, so **cap-hit
+rate must be reported alongside resolve rate** or the two effects are confounded. Note the
+direction is not obvious a priori: suppressing prose could *reduce* tokens per turn and so
+*raise* the number of turns reached before the cap.
 
-**Status: not launched.** The parity-ladder arrays are pending on the same GPUs, and the
-matched control is inside them.
+**Status: not launched at time of writing.** The parity-ladder arrays held the GPUs and the
+matched control was inside them.
 
 ### 3.4d Method notes and caveats — read before quoting these numbers
 

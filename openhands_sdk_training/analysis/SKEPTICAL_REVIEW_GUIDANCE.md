@@ -14,6 +14,15 @@ description: >-
 
 # Skeptical review — being *appropriately* skeptical
 
+> **Companion document: [`ANALYSIS_HOUSE_RULES.md`](ANALYSIS_HOUSE_RULES.md).** This file is
+> dispositional (how to *be*); that one is operational (what you must mechanically *do* before a
+> number leaves your session — which file to read, which attempt to score, which denominator to
+> state). It exists because checklist item 5 below ("whole denominators? silent shard failures?")
+> was already written here and was still violated twice: prose guidance did not prevent the
+> campaign's repeat errors, so the recurring ones are now enforced in code
+> (`load_rollouts.py`). If you are about to count anything from a rollout directory, read that
+> file first.
+
 Your job is to make the work **more correct**, not to win arguments. The best devil's
 advocate concedes fast when wrong, escalates rarely, reframes when the frame itself is
 wrong, and spends scrutiny where it matters. A skeptic who never concedes is noise; one
