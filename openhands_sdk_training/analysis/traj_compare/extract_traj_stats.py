@@ -87,6 +87,18 @@ def obs_is_error(ev):
     o = ev.get("observation")
     return bool(isinstance(o, dict) and o.get("is_error"))
 
+def _thought_texts(ev):
+    """`thought` is either a str or a list of content blocks; yield the text of each.
+
+    The literal "<think>" tag base emits lives here, not in `thinking_blocks`.
+    """
+    th = ev.get("thought")
+    if isinstance(th, list):
+        return [_s(b.get("text")) for b in th if isinstance(b, dict)]
+    if isinstance(th, str):
+        return [th]
+    return []
+
 def thinking_len(ev):
     tb = ev.get("thinking_blocks")
     n = 0
@@ -203,12 +215,22 @@ def analyse(rec, model, resolved_ids):
 
     thought_lens, reason_lens, think_lens = [], [], []
     think_arg_lens = []          # the `think` tool's argument = the model's explicit reasoning
-    # A model can reason on two different channels and `n_think` only sees one of
-    # them. The base model emits native <think>/reasoning blocks and never calls
-    # the think tool; the SFT arm is the exact mirror. Comparing `n_think` across
-    # the two is apples-to-oranges, so count the channels separately and also
-    # count "reasoned at all, either way" for the cross-model comparison.
+    # A model can reason on more than one channel and `n_think` only sees one of
+    # them, so count the channels separately and also count "reasoned at all, any
+    # way" for the cross-model comparison.
+    #
+    # MEASURED on the parity ladder 2026-08-05, do not assume otherwise:
+    #  * `thinking_blocks` and `reasoning_content` are NEVER populated by this
+    #    harness. n_native_think/n_reason_content are therefore uniformly 0 for
+    #    every cell, base included -- a silent zero indistinguishable from a real
+    #    one. The native block arrives as a literal "<think>" inside `thought`,
+    #    which is what n_think_tag/think_tag_chars below measure.
+    #  * every cell calls the `think` TOOL in ~all instances (base 52/52 and
+    #    100/100, arms 97-98/100). The old comment here claimed base never calls
+    #    it and the arm was "the exact mirror" -- that mirror does not exist.
     n_native_think = n_reason_content = n_any_reason = 0
+    n_think_tag = n_think_tag_closed = 0
+    think_tag_lens = []
     for e in actions:
         thought_lens.append(len(_s(e.get("thought"))))
         reason_lens.append(len(_s(e.get("reasoning_content"))))
@@ -217,11 +239,28 @@ def analyse(rec, model, resolved_ids):
         if is_tool:
             a = tool_args(e)
             think_arg_lens.append(len(_s(a.get("thought")) or _s(a.get("_raw"))))
+        tagged = False
+        for s in _thought_texts(e):
+            if "<think>" not in s:
+                continue
+            tagged = True
+            n_think_tag += 1
+            after = s.split("<think>", 1)[1]
+            if "</think>" in after:
+                n_think_tag_closed += 1
+                after = after.split("</think>", 1)[0]
+            else:
+                # unclosed: attribute only up to the first markdown header, since
+                # everything after it is ordinary phase prose, not reasoning.
+                m = re.search(r"\n\s*#{1,3}\s", after)
+                if m:
+                    after = after[:m.start()]
+            think_tag_lens.append(len(after.strip()))
         native = think_lens[-1] > 0
         rc = reason_lens[-1] > 0
         n_native_think += native
         n_reason_content += rc
-        n_any_reason += bool(native or rc or is_tool)
+        n_any_reason += bool(native or rc or is_tool or tagged)
 
     # --- repetition / looping
     sigs = [act_signature(e) for e in actions]
@@ -360,6 +399,11 @@ def analyse(rec, model, resolved_ids):
         n_turns_with_thought=sum(1 for x in thought_lens if x > 0),
         n_native_think=n_native_think, n_reason_content=n_reason_content,
         n_any_reason=n_any_reason,
+        # the channel that is actually populated here -- prefer these over
+        # n_native_think, which is a silent zero on this harness (see above).
+        n_think_tag=n_think_tag, n_think_tag_closed=n_think_tag_closed,
+        think_tag_chars_total=sum(think_tag_lens),
+        think_tag_chars_max=max(think_tag_lens) if think_tag_lens else 0,
         reasoning_chars_total=sum(reason_lens), thinking_chars_total=sum(think_lens),
         think_arg_chars_total=sum(think_arg_lens),
         think_arg_chars_mean=(sum(think_arg_lens) / len(think_arg_lens)) if think_arg_lens else 0,
