@@ -32,12 +32,19 @@ for T in par_A_arm_stock_evalp par_B_arm_nostub_evalp par_C_arm_nostub_wrap \
     NREP=$(ls "$R/runs/score_$RTAG"/shard_*of*.report.json 2>/dev/null | wc -l)
     EXPN=$(ls "$R/runs/score_$RTAG"/shard_*of*.report.json 2>/dev/null | head -1 \
            | sed 's/.*of\([0-9]*\)\.report\.json/\1/')
+    # The still-queued check MUST come before the merge gate. These run on
+    # scavenge, so an array task can write its report, be preempted, and rerun.
+    # Merging in that window freezes a report that is about to be rewritten, and
+    # the merged.report.json -> DONE branch above means it would never be
+    # re-merged. Wait for the whole array to leave the queue.
+    case " $QUEUED " in
+      *" sc_$RTAG "*) echo "SCORING $RTAG ($NREP/${EXPN:-?} shards)"; continue;;
+    esac
     if [ "$NREP" -gt 0 ] && [ "$NREP" -eq "${EXPN:-0}" ]; then
       echo "MERGE $RTAG"
       python3 "$R/scripts/merge_shard_reports.py" "$RTAG" 2>&1 | tail -1
       continue
     fi
-    case " $QUEUED " in *" sc_$RTAG "*) echo "SCORING $RTAG ($NREP/$NSH)"; continue;; esac
 
     D="$R/runs/reagg_$TAG"
     mkdir -p "$D"
