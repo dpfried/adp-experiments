@@ -904,16 +904,18 @@ should be extrapolated.
 
 #### Inferred, with the confounds that are now measured rather than hypothesised
 
-* **Pre-registered risk (b), relocation: CONFIRMED, p = 0.0001.** `ThinkAction` share
-  **2.4×**es, up on 20 of 22 paired instances. The reasoning did not disappear; it moved into
+* **Pre-registered risk (b), relocation: CONFIRMED, p < 1e-4.** `ThinkAction` share
+  **2.5×**es (6.96% → 17.65%), up on 25 of 27 paired instances, and the effect *strengthened*
+  from M=22 to M=27. The reasoning did not disappear; it moved into
   the `think` tool. **This changes what G can answer.** The manipulation is not
   "reasoning off" — it is "reasoning must be inside `think()`". A null score effect therefore
   reads *"the surface form of the reasoning does not matter"*, **not** *"the reasoning does not
   matter."* Testing load-bearingness now **requires** the second axis (drop `think` from the
   offered tool list); that axis is no longer an optional cheap extra.
 * **Pre-registered risk (c), cap-hit rate: CONFIRMED, large, and in the direction that
-  flatters G.** Blocking prose cuts cap hits 36% → 8% (p = 0.0043); 16 of E's 18 cap-hitters
-  run to completion under G. G therefore gets strictly more usable task budget than E.
+  flatters G.** Blocking prose cuts cap hits **36.4% → 16.7% (p = 0.024** at N=66; it was
+  36.0% → 8.0%, p = 0.0043 at N=50 — **attenuating, see the trajectory note**); 18 of E's 24
+  cap-hitters run to completion under G. G therefore gets more usable task budget than E.
   **Any score win by G is confounded by this and cannot be read as an effect of narration.**
   ~~A score *loss* by G is the only cleanly interpretable direction.~~ **Superseded at N=66:
   see risk (a) below — a loss is no longer clean either.**
@@ -921,7 +923,7 @@ should be extrapolated.
   G has a gradeable patch on 63.6% of instances vs E's 71.2% (p = 0.405, not significant).
   Fewer patches mechanically depresses score. Two opposed confounds of unequal certainty is
   worse than one, not better.
-* **Turn count is unchanged where E does not cap** (213 vs 255.5 median, 11/11, p = 1.0), but
+* **Turn count is unchanged where E does not cap** (216 vs 263 median, 13/14, p = 1.0), but
   that comparison is conditioned on E having a transcript, i.e. on E *not* capping — the
   interesting instances are missing from it by construction. The mechanism behind the cap
   drop is not established by these data.
