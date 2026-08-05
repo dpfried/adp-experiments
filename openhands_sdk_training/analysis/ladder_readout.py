@@ -98,10 +98,11 @@ def read_cell(root, tagbase):
             "native": native}
 
 
-def read_score(root, tagbase):
+def read_score(root, tagbase, suffix=""):
     resolved, scored = set(), 0
     for sh in SHARDS:
-        rep = os.path.join(root, "runs", f"score_{tagbase}__s{sh}", "merged.report.json")
+        rep = os.path.join(root, "runs", f"score_{tagbase}__s{sh}{suffix}",
+                           "merged.report.json")
         if not os.path.exists(rep):
             continue
         try:
@@ -111,6 +112,55 @@ def read_score(root, tagbase):
         resolved |= set(j.get("resolved_ids") or [])
         scored += len(j.get("resolved_ids") or []) + len(j.get("unresolved_ids") or [])
     return resolved, scored
+
+
+def _patchlen(r):
+    tr = r.get("test_result") if isinstance(r.get("test_result"), dict) else {}
+    return len((tr.get("git_patch") or r.get("git_patch") or ""))
+
+
+def count_discarded(root, tagbase):
+    """Instances whose scored record has an empty patch while an earlier critic
+    attempt produced a non-empty one -- the harness aggregator defect documented
+    in parity_ladder_amendment.md Addendum 5.
+
+    `aggregate_results()` breaks a rank tie in favour of the LATEST attempt with a
+    rank function that never checks whether a patch exists, so a degenerate final
+    retry silently discards a good earlier patch. Only a model that retries a lot
+    is exposed, which makes it asymmetric between base and arm -- exactly the
+    comparison this script exists to make. It must therefore be COUNTED, not
+    assumed absent: measured 0/400 on the arm cells and 9/50 on base cell F s01.
+    """
+    empty_tot = disc_tot = 0
+    for sh in SHARDS:
+        d = os.path.join(root, "runs", f"out_{tagbase}__s{sh}")
+        g = glob.glob(os.path.join(d, "**", "output.jsonl"), recursive=True)
+        if not g:
+            continue
+        dd = os.path.dirname(g[0])
+        fin, att = {}, collections.defaultdict(int)
+        for line in open(os.path.join(dd, "output.jsonl")):
+            line = line.strip()
+            if not line:
+                continue
+            try: r = json.loads(line)
+            except Exception: continue
+            fin[r["instance_id"]] = max(fin.get(r["instance_id"], 0), _patchlen(r))
+        for a in (1, 2, 3, 4, 5):
+            f = os.path.join(dd, f"output.critic_attempt_{a}.jsonl")
+            if not os.path.exists(f):
+                continue
+            for line in open(f):
+                line = line.strip()
+                if not line:
+                    continue
+                try: r = json.loads(line)
+                except Exception: continue
+                att[r["instance_id"]] = max(att[r["instance_id"]], _patchlen(r))
+        empty = [i for i, L in fin.items() if L == 0]
+        empty_tot += len(empty)
+        disc_tot += sum(1 for i in empty if att.get(i, 0) > 0)
+    return empty_tot, disc_tot
 
 
 def load_stats(path):
@@ -165,16 +215,47 @@ def main():
     print("=" * 100)
     print("SCORE (over ALL instances incl. no-transcript rows; scoring reads both files)")
     print("=" * 100)
-    print(f"{'cell':4} {'resolved':>9} {'scored':>7} {'rate':>7}")
-    for c, tagbase, *_ in CELLS:
+    print(f"{'cell':4} {'resolved':>9} {'scored':>7} {'rate':>7} "
+          f"{'emptyPatch':>11} {'discarded':>10} {'repaired':>18}")
+    warn = []
+    for c, tagbase, model, *_ in CELLS:
         res, n = read_score(root, tagbase)
+        empty, disc = count_discarded(root, tagbase)
+        rres, rn = read_score(root, tagbase, "_reagg")
+        # The repaired resolved set is the original PLUS anything the rescued
+        # records resolve; the rescued instances were scored on an empty patch in
+        # the original, so they are necessarily unresolved there.
+        if disc and rn:
+            pair = f"{len(res | rres):3} / {n:3}  ({len(rres)} new)"
+        elif disc:
+            pair = "MISSING"
+            warn.append((c, disc))
+        else:
+            pair = "n/a (no-op)"
         sc[c] = (res, n)
-        print(f"{c:4} {len(res):9} {n:7} {pct(len(res), n):>7}")
+        if disc and rn:
+            sc[c + "*"] = (res | rres, n)
+        print(f"{c:4} {len(res):9} {n:7} {pct(len(res), n):>7} "
+              f"{empty:11} {disc:10} {pair:>18}")
+    print("  discarded = scored record has an empty patch though an earlier critic\n"
+          "  attempt produced one (amendment Addendum 5). Measured, never assumed:\n"
+          "  the harness tie-break is patch-blind and only bites models that retry,\n"
+          "  so it is asymmetric between base and arm. Arm cells measured 0/400.")
+    if warn:
+        for c, d in warn:
+            print(f"  !! CELL {c}: {d} instances had a good patch DISCARDED by the "
+                  f"harness aggregator and no repaired scoring exists. This cell's "
+                  f"score is a BIASED-LOW estimate; do not report it alone. Run "
+                  f"repair_aggregate.py and score the repaired subset.")
 
     print()
     print("=" * 100)
     print("ADJACENT-RUNG DELTAS (attribution rule: assign an effect to the SMALLEST rung)")
     print("=" * 100)
+    print("  These use the AS-HARNESS resolved sets (the pre-registered primary). Where\n"
+          "  the SCORE table above shows a repaired pair for a base cell, read any rung\n"
+          "  touching that cell alongside the repaired number -- the defect biases base\n"
+          "  LOW, so E/F rungs against an arm are conservative in the base direction.")
     rungs = [("B", "A", "stub removed"),
              ("C", "B", "wrapper & path matched"),
              ("D", "C", "prohibition & 5-phase list"),
