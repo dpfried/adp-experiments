@@ -310,3 +310,52 @@ heterogeneity**, and therefore is *not itself a measurement of run-noise*. Only
 a same-condition replicate (E vs E′ on identical settings) could decompose the
 two. No such replicate is being run, and none is needed for this decision — but
 the SE must not be quoted as "the harness's run-noise."
+
+---
+
+## Addendum 4 — scoring-harness defect found and corrected before it touched a number
+
+Recorded because it affects provenance of every score in this ladder, and
+because it is the exact failure mode this document's discipline exists to catch.
+
+My first `score_ladder.sh` had two defects, each of which would have corrupted
+the readout **silently** rather than failing loudly:
+
+1. **No completeness gate.** It submitted scoring as soon as `output.jsonl`
+   existed, so cells were scored on 4/50, 5/50, 6/50 instances while inference
+   was still appending rows. Paired with its `merged.report.json -> SKIP`
+   branch, the first partial merge to land would have been treated as final and
+   that cell would **never** have been re-scored on the full 50.
+   `ladder_readout.py` takes its denominator from the merged report, so it would
+   have printed a confident rate over ~6 instances and quietly shrunk the paired
+   intersection — a silent-denominator error, the thing the "never assume 100"
+   rule was written to prevent.
+2. **Wrong idempotency key.** `run_score_shards.sbatch` writes per-shard
+   `shard_NofM.report.json`; it does **not** write `merged.report.json` (that is
+   a separate `merge_shard_reports.py` step). The "already merged" guard could
+   therefore never become true, so every 10-minute tick resubmitted every
+   eligible cell. 36 stray scoring jobs accumulated.
+
+**Caught before any `merged.report.json` existed** — verified explicitly, all 12
+cells showed `merged=no` — so no reported number was ever derived from partial
+data. Remediation: cancelled all 36 stray jobs, deleted all 12 `score_par_*`
+dirs (1.1G of derived artifacts; the 3.3G of `out_par_*` rollouts was not
+touched), and rescored from scratch under a fixed gate. A cell is now eligible
+only when `out+err >= expected` **and** its infer array element has left the
+queue — the second condition matters, and held back `F__s01` while it sat at
+50/50 with its element still queued.
+
+One further trap the fix has to respect: `merge_shard_reports.py` **globs**
+`shard_*.report.json`, so stale partial shard reports would be silently mixed
+into a fresh merge. Rescoring a cell therefore removes its score dir rather than
+overwriting it.
+
+Scripts committed for provenance: `swe-bench-fair-evals/scripts/score_ladder.sh`
+and `analysis/ladder_readout.py`, both requiring `SWEBENCH_ROOT` / `INFER_ARRAY`
+rather than carrying cluster paths.
+
+**Collection status at time of fix:** all four arm cells complete at 100/100
+(A, B, C, D — 50/50 on each shard, 0 error rows), so the entire arm ladder
+(S1 = B−A, C−B, D−C, and L1 = C−A) is fully collected. Base cells still running,
+consistent with their cap-hitting long rollouts: F at 46/50 and 50/50, E at
+7/50 and 4/50.
