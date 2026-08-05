@@ -254,3 +254,40 @@ n=100, so it is deliberately insensitive — it will not false-alarm on decode
 noise, and correspondingly **cannot detect a real sub-8pp cap-hit effect**. L3
 is a plumbing guard, not a test of the stub's effect on budget, and must not be
 reported as the latter.
+
+---
+
+## Addendum 3 — served-prompt verification (S0), measured on the live servers
+
+The chat-template override was verified three ways before any rollout finished,
+in increasing strength:
+
+1. **Launcher echo** — each cell logs the template path it was handed, plus the
+   `sha256` of `nostub.jinja` (`603813c5466bbf49`, identical across cells).
+2. **vLLM arg dump** — the nostub cells list
+   `'chat_template': '<...>/prompts_adp/nostub.jinja'` under `non-default args`;
+   the stock cells do not. This proves vLLM *accepted* the flag.
+3. **Rendered-token probe** — the decisive one. `POST /tokenize` on each live
+   server with the same one-message conversation, `add_generation_prompt=true`
+   **and `chat_template_kwargs={"enable_thinking": false}`** (the kwarg the
+   harness always sends):
+
+   | cell | model | template | tokens | tail |
+   |---|---|---|---|---|
+   | A | arm  | stock  | 13 | `… 248068, 271, 248069, 271` |
+   | B | arm  | nostub |  9 | `… 74455, 198` |
+   | E | base | stock  | 13 | `… 248068, 271, 248069, 271` |
+   | F | base | nostub |  9 | `… 74455, 198` |
+
+   The 4-token difference is exactly `<think>` `\n\n` `</think>` `\n\n`
+   (`[248068, 271, 248069, 271]`) and nothing else — the prefix is
+   byte-identical. The manipulation is confirmed **in the string the model
+   actually conditions on**, on all four cells, not merely in a launcher flag.
+
+**Recorded trap for anyone re-running this probe:** omitting
+`chat_template_kwargs` makes stock and nostub render *identically* (both 11
+tokens, ending `<think>` `\n`). That is correct behaviour, not a failed
+override — `nostub.jinja` only edits the `enable_thinking=false` branch, and the
+default branch opens a real `<think>` for the model to fill. A probe without the
+kwarg tests the wrong branch and would wrongly read as "the override did
+nothing."
