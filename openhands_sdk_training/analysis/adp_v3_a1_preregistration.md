@@ -1294,3 +1294,39 @@ Full write-up with verbatim examples: **`adp_thinking_traces_report.md`**. Addit
 * **Counting caveat:** count `think` structurally via `role == "function_call"`; the
   `<function=think>` XML is generated at tokenization, so grepping raw jsonl returns 0.
 
+
+### 19.6 How much of the SFT gradient is `think`-tool prose? (2026-08-04, measured)
+
+Follow-up question: at eval, *what* produces the text inside the `think` tool, and is that
+text supervised in training? Two texts, opposite answers — both measured.
+
+**(i) The `thought` argument.** Produced by the **model**, as ordinary completion text; vLLM's
+`qwen3_coder` tool parser (`--enable-auto-tool-choice`, sbatch:50) structures it into a tool
+call, which OpenHands validates into `ThinkAction` → `action.thought`. **It is supervised**,
+and it is a large share of the signal. Measured by locating the token subsequences for
+`<function=think>` (`[27, 1628, 28, 26003, 29]`) and `</function>` (`[510, 1628, 29]`) in
+`input_ids` and reading the label mask over the span — no char↔token mapping. First 600
+records of shard 0:
+
+| subset | loss tokens | think spans | loss tokens in `think` | **share of ALL supervision** |
+| --- | --- | --- | --- | --- |
+| swezero | 1,236,921 | 630 | 247,497 | **20.0%** |
+| coderforge | 1,486,600 | 541 | 197,798 | **13.3%** |
+| pooled220k / pooled55k | 1,403,565 | 403 | 156,135 | **11.1%** |
+| rebench | 1,588,800 | 322 | 127,146 | **8.0%** |
+| **scale** | 1,231,570 | **0** | **0** | **0.0%** |
+
+Stable across sample size (swezero: 21.9% at n=150, 20.0% at n=600; v3_tokmatch 22.4% at
+n=150). ⇒ **~1/5 of swezero's and the v3 arms' entire SFT gradient teaches the model to write
+reasoning prose into a tool that does nothing.** The campaign does train on reasoning traces —
+packaged as tool calls, not native CoT. `scale` is the sole exception at 0%.
+
+**(ii) The tool's return, `"Your thought has been logged."`** Produced by the **scaffold**, a
+constant. In training it arrives as `role: tool` and lands in the observation slot, which is
+**masked**: of the token spans found (`[7525, 3272, 682, 978, 13332, 13]`), **0 carry loss in
+any subset**. Correct behaviour for an observation; noted only because the two texts are easy
+to conflate.
+
+**Unverified oddity, flagged not asserted:** pooled220k and pooled55k report byte-identical
+figures on shard 0, which may mean a shared or prefix-identical shard rather than independent
+data. Not checked.

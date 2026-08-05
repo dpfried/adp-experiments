@@ -289,6 +289,64 @@ Worth stating plainly because it cuts against a tidy story: **the best model is 
 worst at formatting this tool, and still wins by 42 points.** Do not turn tool-call hygiene
 into a mechanism.
 
+### 3.4b Where the `thought` text comes from at eval, and whether it is supervised
+
+Two different texts are involved and they have opposite answers. Both measured.
+
+**(i) The `thought` argument — the reasoning prose. Produced by the MODEL. SUPERVISED.**
+
+At eval it is ordinary generated output, not a separate channel and not injected. The model
+emits `<tool_call><function=think><parameter=thought>…</parameter></function></tool_call>`
+in its normal completion; vLLM — launched with
+`--enable-auto-tool-choice --tool-call-parser qwen3_coder`
+(`run_full_infer.sbatch:50`; `auto_tool_choice': True` confirmed in the server log) — parses
+that into a structured tool call, which OpenHands validates into a `ThinkAction`. The rollout
+keeps both forms side by side (base, `django__django-15467`):
+
+```json
+"tool_call": {"id": "chatcmpl-tool-88ffca7c419213fa", "name": "think",
+              "arguments": "{\"summary\": \"Analyze the RadioSelect empty_label bug\",
+                             \"thought\": \"I see! Look at lines 1464-1469 in `ModelChoiceField.__init__`:…\"}"}
+"action":    {"thought": "I see! Look at lines 1464-1469 in `ModelChoiceField.__init__`:…"}
+```
+
+⇒ **the same token stream as any other tool call.** Nothing distinguishes it at generation
+time; only the tool name does.
+
+At training this text is **fully inside the loss**. Measured exactly by locating the token
+subsequences for `<function=think>` (ids `[27, 1628, 28, 26003, 29]`) and `</function>`
+(`[510, 1628, 29]`) in `input_ids` and reading the label mask over the span — no char↔token
+mapping guesswork. First 600 records of shard 0 per subset:
+
+| subset | loss-bearing tokens | think spans | loss-bearing tokens inside `think` | **share of ALL supervision** |
+| --- | --- | --- | --- | --- |
+| **swezero** | 1,236,921 | 630 | 247,497 | **20.0%** |
+| coderforge | 1,486,600 | 541 | 197,798 | **13.3%** |
+| pooled220k / pooled55k | 1,403,565 | 403 | 156,135 | **11.1%** |
+| rebench | 1,588,800 | 322 | 127,146 | **8.0%** |
+| **scale** | 1,231,570 | **0** | **0** | **0.0%** |
+
+(Stable across sample size: swezero measures 21.9% on the first 150 records, 20.0% on 600.
+v3_tokmatch, which inherits swezero, measures 22.4% on 150.)
+
+⇒ **Roughly a fifth of swezero's entire SFT gradient — and ~22% of the v3 arms' — teaches
+the model to write reasoning prose into a tool that does nothing.** The campaign *does*
+train on reasoning traces; they are simply packaged as tool calls rather than native CoT.
+`scale` is the sole exception: **0%** of its supervision is reasoning text, all of it actions.
+
+**(ii) The tool's return value — `"Your thought has been logged."`. Produced by the
+SCAFFOLD. NOT supervised.**
+
+It is a constant emitted by the tool, never by the model. In training it arrives as
+`role: tool` and is rendered into the observation slot, which is **masked**: of the
+`"Your thought has been logged."` token spans found (`[7525, 3272, 682, 978, 13332, 13]`),
+**0 tokens carry loss in any subset** — swezero, coderforge, rebench, scale, pooled55k,
+pooled220k alike.
+
+So the model is supervised to *write* thoughts, never to *predict the acknowledgement* —
+which is correct behaviour for an observation, and worth stating only because the two texts
+are easy to conflate.
+
 ### 3.5 What the numbers do and don't support
 
 1. **`scale` 0 → 0 is an exact behavioural transfer.** The only subset with zero `think`
