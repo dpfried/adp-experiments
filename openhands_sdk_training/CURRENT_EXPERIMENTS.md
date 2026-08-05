@@ -1,5 +1,12 @@
 # Current OpenHands SDK Experiments
 
+> ⛔ **Before you count anything from a SWE-bench-eval rollout directory, read
+> [`analysis/ANALYSIS_HOUSE_RULES.md`](analysis/ANALYSIS_HOUSE_RULES.md) and use
+> `analysis/load_rollouts.py`.** Three of this campaign's six reverted conclusions came from one
+> silent harness defect: `output.jsonl` omits every errored instance, so grepping it for
+> `MaxIterationsReached` returns zero *by construction*. The rules are binding on anything that
+> reaches a report, a prereg, a memory file, or the coordination channel.
+
 This file tracks the current experiments under `~/exp/adp` as of 2026-06-05.
 The original 0.8B reproduction flow remains in `README.md`; the current main
 work is the 32k Qwen3.5 full-parameter SFT line on OpenHands SDK condenser data.

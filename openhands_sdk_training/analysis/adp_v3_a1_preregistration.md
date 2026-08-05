@@ -1347,3 +1347,38 @@ board (rebench 76, coderforge 50, scale 36).
 Full detail, tool-by-tool transmission fidelity, and the method caveats (including two
 self-corrections: round-robin stride aliasing in the pooled caches, and BPE tool-name
 detection dropping `file_editor`) are in `adp_thinking_traces_report.md` §3.4b–§3.4d.
+
+### 19.7 ⚠️ Denominator + compute caveats on every base number in §19 (added 2026-08-05)
+
+Two defects in the underlying artifacts, both of which post-date the §19 numbers being written
+and neither of which touches any training-side measurement (those read the tokenized caches).
+
+**(a) Base's behavioural numbers are over 300 rollouts, not 500.** 200 of base's 500 records
+carry `history: []` and `metrics: null` — the transcript and token accounting are gone — yet
+they are still **graded**, because the prediction is the workspace diff. So the 19.5% `think`
+share, the 16.2% narration share, 13.4 `think` calls/instance, 85,726 action events and every
+depth median in §19 are over a **biased 60% subsample whose exclusions are systematically base's
+longest runs**. Arm figures are essentially unaffected (0–5 blanks each), so every base-vs-arm
+comparison in §19 pits a top-truncated base against complete arms. **26 of base's 119 resolves
+have no transcript and cannot be attributed to any measured behaviour**; no arm has one.
+Error taxonomy of the 200: `MaxIterationsReached` 131, `OSError` 20, "did not complete" 16,
+other retry failures 33.
+
+The cap-hit component **reproduces** on a newer harness and is **stub-linked**: with the frozen
+attempt-1 files, base + stock (stub) template caps on **35/100** instances, base + nostub on
+**0/100**, same harness `sdk_43376f1` / same instances / same weights. (I published a retraction
+of this claiming it did *not* reproduce; that retraction was wrong — I had counted from
+`output.jsonl`, which by construction omits errored instances. See `ANALYSIS_HOUSE_RULES.md`.)
+
+**(b) Test-time compute was never controlled, in two separate ways.** Completion tokens per
+transcript-bearing instance: base **54.7k** vs swezero **10.8k** — and base's total *excludes*
+its 200 capped runs. Resolves per million completion tokens: swezero **14.2**, v3_maxpool 12.7,
+v3_tokmatch 12.3, base **≤7.3**, rebench 3.5, coderforge 3.1, scale 2.4. Separately, the
+harness retries whatever **its critic** rejects, sampling attempts ≥2 at **temp 0.1**; the
+critic rejected base 71/100 in one cell and the arms 2–5/100 under identical config, so
+unmatched cells give base a best-of-2.3 advantage. ⇒ **"base ≫ arms" is a statement about a
+fixed *iteration* budget under an unmatched retry policy, not about a fixed compute budget.**
+Any future cross-model number here is attempt-1 only.
+
+Neither defect touches the Lever-A refutation: swezero, v3_tokmatch and v3_maxpool have **zero**
+blanks between them.
