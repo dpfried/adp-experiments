@@ -1001,3 +1001,72 @@ cell-vs-cell within the aggregate batch, each quoted separately.
 instances flipping between nominally identical runs) was attributed to *rollout*
 noise. Part of it is this instead: scoring noise on identical patches. The ±7/100
 detection floor stands as a floor; its attribution was wrong.
+
+---
+
+## Addendum 9 — the readout was scoring an unmerged shard as fifty failures
+
+Found while reading the first matched F−B number, and it moved that number, so it
+goes on the record next to it rather than in a commit message.
+
+`ladder_readout.py` paired each rung on the intersection of the cells' **rollout**
+id sets — every instance present in the rollout file. That is the right universe
+only when both cells are fully scored. Cell F had one of its two a1 shards merged,
+so the primary matched rung printed
+
+    F-B  base vs arm, nostub [PRIMARY, matched]   6 ->   2 on n=100  net= -4
+
+pairing B's 100 scored instances against F's 50, and silently counting F's 50
+**unscored** instances as unresolved. On the 50 instances actually scored in both
+cells it is `2 -> 2, net 0`. The validity gate had the same defect from the other
+side: it compared F's 100-instance aggregate (27 resolved) against its 50-instance
+a1 (2 resolved) and reported a 25-point move; restricted to the shared scored set
+it is 18 vs 2 against 36 retried.
+
+Both blocks now intersect with the scored-id sets read out of the merged reports,
+and partial coverage is labelled inline (`[PARTIAL 50/100]`) instead of being
+absorbed into the denominator. This is the third instance this week of the same
+failure family: **a missing input read as a zero rather than as missing** (the two
+`extract_traj_stats.py` defects in §7c are the others). The lesson I will keep
+applying: any metric whose denominator comes from a different file than its
+numerator needs the two reconciled explicitly, because the failure is silent and
+always in the direction of "the thing I was measuring didn't happen."
+
+## Addendum 10 — how I will settle the failed gate, registered before the test
+
+The registered validity gate FAILS in all five scored cells: 4–9 instances per
+cell disagree between the aggregate and a1 scorings on rollouts that were never
+retried (tolerance 2). The registered prescription was "re-run the attempt-1
+scoring serially and re-read." I am not going to follow that literally, and here
+is why, together with what I will do instead.
+
+The gate compares the aggregate batch against the a1 batch, so it is itself a
+**cross-batch** comparison — exactly the thing Addendum 8 shows is contaminated.
+Its failure is therefore the *expected* consequence of Addendum 8, not new
+evidence, and re-running the a1 scoring serially would produce a third batch with
+its own offsets and would not distinguish the two live hypotheses:
+
+- **H-collision:** the a1 batch is internally damaged, because 20 concurrent tasks
+  scored one shared instance set and the sbatch prunes sandboxes keyed by
+  `instance_id` alone. If so the a1 numbers are unusable as they stand.
+- **H-batch:** verdicts are an instance-level property of a batch. Then the
+  disagreement is real but **cancels inside** the a1 batch, and within-batch
+  cell-vs-cell rungs remain the best available instrument.
+
+The discriminating test is cheap and CPU-only: **re-score one cell's a1 subset
+serially, alone in the queue, and compare it against that cell's first a1 result.**
+Registered readings, before the numbers exist:
+
+| serial a1 vs first a1, same cell | reading |
+|---|---|
+| 0–2 instances disagree | H-batch. The a1 batch is internally reproducible; the agg-vs-a1 gap is a batch offset that cancels within-batch. Matched rungs readable, ±2–3/cell. |
+| ≥5 disagree | H-collision, or a third source. The a1 batch is not reproducible even alone, and **no** matched rung may be quoted; the whole matched ladder needs re-running serially. |
+| 3–4 | ambiguous at this n; re-score a second cell before concluding. |
+
+Cell B is the one to test: it is the arm side of the primary rung, fully merged,
+and its a1 (6/100) sits close enough to its aggregate (8/100) that a collision
+large enough to matter would be visible.
+
+Until that test returns, the matched rungs in the readout stay flagged **do not
+interpret**, and I will not quote the matched F−B as a result — only as a number
+whose validity is pending one specific test.
