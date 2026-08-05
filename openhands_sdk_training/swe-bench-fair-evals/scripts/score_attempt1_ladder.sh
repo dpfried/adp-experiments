@@ -64,15 +64,6 @@ for T in par_A_arm_stock_evalp par_B_arm_nostub_evalp par_C_arm_nostub_wrap \
       *" sc_$TAG "*|*" sc_${TAG}_reagg "*)
         echo "WAIT  $RTAG (other scoring of $TAG still queued)"; continue;;
     esac
-    # CROSS-CELL guard. Every ladder cell is scored on the SAME instance set, and
-    # the scoring sbatch prunes Apptainer sandboxes keyed by instance_id alone --
-    # so any two a1 jobs collide, not just two jobs of the same cell. The
-    # same-cell check above does not cover this; the first a1 batch was submitted
-    # without it and ran 20 tasks over one shared instance set. Serialise.
-    case " $QUEUED " in
-      *" sc_par_"*"_a1 "*)
-        echo "WAIT  $RTAG (another cell's a1 scoring is queued -- shared instance set)"; continue;;
-    esac
     if [ "$NREP" -gt 0 ] && [ "$NREP" -eq "${EXPN:-0}" ]; then
       echo "MERGE $RTAG"
       python3 "$R/scripts/merge_shard_reports.py" "$RTAG" 2>&1 | tail -1
@@ -84,6 +75,18 @@ for T in par_A_arm_stock_evalp par_B_arm_nostub_evalp par_C_arm_nostub_wrap \
     python3 "$A/attempt1_subset.py" "$OUTD" "$D/output.jsonl" | head -1
     N=$(wc -l < "$D/output.jsonl" 2>/dev/null || echo 0)
     if [ "$N" -eq 0 ]; then echo "NOOP  $TAG (no attempt-1 file)"; continue; fi
+    # CROSS-CELL guard, and it has to sit HERE rather than next to the same-cell
+    # check: every ladder cell is scored on the SAME instance set and the scoring
+    # sbatch prunes Apptainer sandboxes keyed by instance_id alone, so any two a1
+    # jobs collide, not just two of the same cell. But merging is a read-only
+    # aggregation that touches no sandbox, so guarding before the merge gate would
+    # stall every cell's merge until the last task drained. Only SUBMIT needs it.
+    # (The first a1 batch went out without this and ran 20 tasks over one shared
+    # instance set -- wall-clock cost, and a spurious-unresolved risk.)
+    case " $QUEUED " in
+      *" sc_par_"*"_a1 "*)
+        echo "WAIT  $RTAG (another cell's a1 scoring is queued -- shared instance set)"; continue;;
+    esac
     if [ "$NREP" -gt 0 ]; then rm -rf "$R/runs/score_$RTAG"; fi   # glob-merge hygiene
     echo "SUBMIT $RTAG ($N attempt-1 records)"
     sbatch --job-name="sc_$RTAG" --array=0-$((NSH-1)) \
