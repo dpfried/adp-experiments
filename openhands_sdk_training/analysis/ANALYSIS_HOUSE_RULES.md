@@ -44,12 +44,22 @@ separate so a revert is a one-line edit to a labelled block, not a headline retr
 ## Rule 1 — Never count a rollout directory by hand. Use the loader.
 
 ```python
+import sys; sys.path.insert(0, "<eval-kit>/analysis")   # installed cluster-side beside this file
 from load_rollouts import load_cell
 cell = load_cell(out_dir, select=".../select/shard_00of10.txt", attempt=1)
 ```
 
 It raises `RolloutIntegrityError` rather than returning a plausible wrong number. Run it as a
 CLI to eyeball a cell: `python load_rollouts.py <out_dir> --select <shard.txt>`.
+
+A copy lives next to this file inside the shared eval kit's `analysis/` directory on the
+cluster, so cluster-side scripts can import it without a repo checkout. **Use `classify()`
+from the loader, never a fresh substring test.** Measured 2026-08-05: an ad-hoc classifier
+that `json.dumps`ed each row and searched for `"ENOSPC"` / `"timed out"` reported cell G as
+`{other_err: 38, ENOSPC: 6, timeout: 2, cap500: 3}` because those strings occur in *agent
+transcripts and test logs*, not only in error fields. The loader on the same rows returned
+`{ok: 42, cap500: 3, stuck: 4}`. The hand-rolled version invented 6 disk-space failures that
+did not exist.
 
 The three traps it closes, each measured on real cells 2026-08-05:
 
@@ -129,6 +139,16 @@ inside one hour — with no interval in which anyone could check it, and it was 
 finding others had already built on. Each step was individually defensible; the sequence was
 noise. **A correction that retracts someone else's load-bearing result gets posted for review
 first and committed second.**
+
+**The same rule applies to a mid-flight result, and here is what it costs to break it.** Cell
+G's paired behavioural comparison, read at M=5 transcripts, gave median action events
+**175 → 67** (a 2.6× drop, 4/5 instances) and malformed tool calls at **3×**. Read at M=22
+three hours later on the same script: action events **213 → 255.5**, 11/11, **p = 1.0** — the
+effect is gone and mildly inverted; malformed fell to 1.6× and stayed non-significant. Only
+the two effects already sitting at the n=5 p-floor, narration (0/5 → 0/22) and `think`
+relocation, survived. **A small-M median in this pipeline is not weak evidence pointing at the
+eventual answer. It is noise with a direction attached, and the direction is not conserved.**
+Cite mid-flight numbers with their M and label them interim, or wait.
 
 ## Rule 7 — Verify the folklore too, including the correction to your own error.
 

@@ -831,8 +831,89 @@ rate must be reported alongside resolve rate** or the two effects are confounded
 direction is not obvious a priori: suppressing prose could *reduce* tokens per turn and so
 *raise* the number of turns reached before the cap.
 
-**Status: not launched at time of writing.** The parity-ladder arrays held the GPUs and the
-matched control was inside them.
+**Status: LAUNCHED 2026-08-05 14:15 UTC**, SLURM array `817665_0/_1`, 2× A100 on
+learnfair6021, `run_narration_block.sbatch`, tags `par_G_base_prefill_evalp__s00/__s01`.
+Model weights byte-identical to cell E's; in-job guard asserts the rendered prompt is stock
++ exactly `<tool_call>\n` (+2 tokens `[248058, 198]`). Interim results in §3.4g.
+
+### 3.4g Cell G interim — the block fired, and both pre-registered risks came true
+
+Read at **G = 50/100 instances attempted** (42 transcript-bearing), array still running.
+All numbers below are **attempt 1 only**, both cells read through
+[`load_rollouts.py`](load_rollouts.py) from `output.critic_attempt_1.jsonl`
+(house rules 1–2). Two denominators, per rule 5: **N = 50 paired instances** for
+outcome classes, **M = 22 paired transcripts** for behavioural rates — M is capped by
+**E**, which has only 46 transcripts of 100, and the intersection is smaller still because
+20 of G's 42 transcripts fall on instances where E *has no transcript at all* (E capped or
+errored there).
+
+#### Measured
+
+**1. The intervention fired, completely.** `0 / 9,398` of G's action events carry event-level
+prose. Not "reduced" — zero, in both shards.
+
+| paired, per-instance medians (M = 22) | E (stock) | G (prefill) | G>E | G<E | sign p |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| **narration %** | 44.46 | **0.00** | 0 | **22** | **<1e-6** |
+| **`ThinkAction` share %** | 7.16 | **16.83** | **20** | 2 | **0.0001** |
+| malformed tool-call % | 2.06 | 3.34 | 15 | 7 | 0.134 |
+| `AgentErrorEvent`s | 4.0 | 8.5 | 15 | 7 | 0.134 |
+| action events | 213.0 | 255.5 | 11 | 11 | 1.000 |
+
+**2. Outcome-class crosstab, paired on all N = 50** (rows E, cols G):
+
+| E \ G | cap500 | ok | stuck | total |
+| --- | ---: | ---: | ---: | ---: |
+| **cap500** | 0 | **16** | 2 | 18 |
+| ok | 3 | 22 | 0 | 25 |
+| other/timeout/ENOSPC | 1 | 4 | 2 | 7 |
+| **total** | **4** | **42** | 4 | 50 |
+
+| paired rate (N = 50) | E | G | exact McNemar |
+| --- | ---: | ---: | ---: |
+| **500-iteration cap hit** | **36.0%** | **8.0%** | **p = 0.0043** |
+| ran to completion (`ok`) | 50.0% | 84.0% | — |
+| has a gradeable patch | 74.0% | 60.0% | p = 0.167 |
+| stuck-detector fired | 2.0% | 8.0% | — |
+
+E's cap rate on this subset (36.0%) matches its rate over all 100 (35.0%), so the subset is
+not unrepresentative for E; the pairing also removes the "fast instances finish first"
+ordering bias that makes G's raw 6.1% uninterpretable on its own.
+
+#### Inferred, with the confounds that are now measured rather than hypothesised
+
+* **Pre-registered risk (b), relocation: CONFIRMED, p = 0.0001.** `ThinkAction` share
+  **2.4×**es, up on 20 of 22 paired instances. The reasoning did not disappear; it moved into
+  the `think` tool. **This changes what G can answer.** The manipulation is not
+  "reasoning off" — it is "reasoning must be inside `think()`". A null score effect therefore
+  reads *"the surface form of the reasoning does not matter"*, **not** *"the reasoning does not
+  matter."* Testing load-bearingness now **requires** the second axis (drop `think` from the
+  offered tool list); that axis is no longer an optional cheap extra.
+* **Pre-registered risk (c), cap-hit rate: CONFIRMED, large, and in the direction that
+  flatters G.** Blocking prose cuts cap hits 36% → 8% (p = 0.0043); 16 of E's 18 cap-hitters
+  run to completion under G. G therefore gets strictly more usable task budget than E.
+  **Any score win by G is confounded by this and cannot be read as an effect of narration.**
+  A score *loss* by G is the only cleanly interpretable direction, since it would have to
+  overcome a large advantage.
+* **A second confound points the other way**, so they do not cancel into "roughly fair":
+  G has a gradeable patch on 60% of instances vs E's 74% (p = 0.167, not significant). Fewer
+  patches mechanically depresses score. Two opposed confounds of unequal certainty is worse
+  than one, not better.
+* **Turn count is unchanged where E does not cap** (213 vs 255.5 median, 11/11, p = 1.0), but
+  that comparison is conditioned on E having a transcript, i.e. on E *not* capping — the
+  interesting instances are missing from it by construction. The mechanism behind the cap
+  drop is not established by these data.
+* Malformed tool calls and `AgentErrorEvent`s trend up ~1.6× but are not significant at
+  M = 22 and must not be quoted as effects yet.
+
+#### Worked example for house rule 6 (don't ship a correction the same hour you measure it)
+
+At M = 5 transcripts, three hours earlier, the same script reported median action events
+**175 → 67** (a 2.6× *drop*, 4/5 instances) and malformed tool calls at **3×**. At M = 22 the
+action-event effect is **gone and slightly inverted** (213 → 255.5, 11/11, p = 1.0) and
+malformed is 1.6×. Only the two effects that were already at their p-floor at n=5 — narration
+and relocation — survived. Small-M medians in this pipeline are not weak evidence of the
+eventual answer; they are noise with a direction attached.
 
 ### 3.4d Method notes and caveats — read before quoting these numbers
 
