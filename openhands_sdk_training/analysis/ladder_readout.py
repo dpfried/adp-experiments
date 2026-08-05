@@ -211,6 +211,36 @@ def main():
           "base 5/324. If non-zero\n  in B/C/D, S1 must be re-scored on native+tool "
           "combined before being read.")
 
+    # --- L3, the pre-registered placebo/plumbing check (amendment Addendum 1).
+    # The 500-iteration cap counts AGENT ITERATIONS, not tokens, so trimming ~4
+    # tokens per assistant turn has no mechanism by which it should move the
+    # cap-hit rate. Registered: |cap-hit(F) - cap-hit(E)| <= 8pp. Deliberately
+    # insensitive (~1.6*SE at n=100): it is a guard against the ladder silently
+    # measuring budget instead of parity, NOT a test of the stub's effect on
+    # budget, and must not be reported as the latter.
+    # Gate on BOTH base cells being complete. A capped instance only lands in
+    # output_errors.jsonl when it finishes hitting the cap, so a mid-flight cell
+    # has a meaningless cap-hit denominator -- evaluating L3 early prints a loud
+    # FAIL that is purely a partial-data artifact.
+    ce, cf = cov.get("E"), cov.get("F")
+    NEXP = 100                       # 2 shards x 50 instances per cell
+    if ce and cf and (len(ce["all"]) < NEXP or len(cf["all"]) < NEXP):
+        print(f"\n  L3 placebo (cap-hit): awaiting completion "
+              f"(E {len(ce['all'])}/{NEXP}, F {len(cf['all'])}/{NEXP}) -- "
+              f"cap-hit is only interpretable on a complete cell")
+    elif ce and cf and ce["all"] and cf["all"]:
+        re_ = 100.0 * len(ce["capped"]) / len(ce["all"])
+        rf_ = 100.0 * len(cf["capped"]) / len(cf["all"])
+        dd = rf_ - re_
+        verdict = ("PASS (plumbing guard clear)" if abs(dd) <= 8.0 else
+                   "FAIL -- inspect the rendered prompts and the vLLM logs BEFORE "
+                   "interpreting any E/F\n           result; an E-F delta would be "
+                   "confounded by budget, not serving format")
+        print(f"\n  L3 placebo (cap-hit, registered |F-E| <= 8pp): "
+              f"E={re_:.1f}%  F={rf_:.1f}%  delta={dd:+.1f}pp  -> {verdict}")
+    else:
+        print("\n  L3 placebo (cap-hit): awaiting both base cells")
+
     print()
     print("=" * 100)
     print("SCORE (over ALL instances incl. no-transcript rows; scoring reads both files)")
@@ -290,11 +320,19 @@ def main():
     # loop skips absent keys silently, so S1's *registered primary outcome* was
     # being dropped without a warning. Names are now asserted against the data
     # below -- a typo here must fail loudly, not vanish.
-    METRICS = ["n_think", "n_turns_with_thought", "think_arg_chars_total",
+    METRICS = ["n_think", "n_native_think", "n_reason_content", "n_any_reason",
+               "n_turns_with_thought", "think_arg_chars_total",
                "verified_after_edit", "ran_any_test", "n_test_runs",
                "n_test_ok_runs", "n_edits", "empty_patch", "finished",
                "finish_claims_success", "n_actions", "n_terminal",
                "n_file_editor", "dup_action_frac"]
+    # Per-action normalisation. A cell that contracts the whole trajectory makes
+    # every raw COUNT move together, so a raw-count delta cannot distinguish "does
+    # this less" from "does less of everything" -- measured on D-C, where 4 of the
+    # metrics that cleared 2*SE as raw counts did not survive normalisation. Rates
+    # and binary flags are already length-immune, so only counts are normalised.
+    NOT_A_COUNT = {"dup_action_frac", "n_actions", "empty_patch", "finished",
+                   "finish_claims_success", "verified_after_edit", "ran_any_test"}
     present = set()
     for m in stats.values():
         for row in m.values():
@@ -303,13 +341,19 @@ def main():
     if missing:
         print(f"  !! METRICS not present in stats.jsonl (typo?): {missing}")
         METRICS = [m for m in METRICS if m in present]
-    for hi, lo, what in rungs[:4] + [("F", "B", "base vs arm, both nostub [LB]")]:
+    # C-A is the registered L1 rung and must appear behaviourally, not only on
+    # score: length-normalising the counts shows the format rungs are NOT inert
+    # on every channel (think rate per action moves ~4 sigma), even though score
+    # is unmoved. Reading L1 off the score line alone would have missed it.
+    for hi, lo, what in rungs[:4] + [("C", "A", "L1: format rungs jointly"),
+                                     ("E", "A", "base vs arm, both stock"),
+                                     ("F", "B", "base vs arm, both nostub [LB]")]:
         sh_, sl_ = stats.get(hi, {}), stats.get(lo, {})
         inter = sorted(set(sh_) & set(sl_) & cov[hi]["have"] & cov[lo]["have"])
         if not inter:
             print(f"  {hi}-{lo}: no paired transcripts yet")
             continue
-        cross_model = (hi, lo) == ("F", "B")
+        cross_model = hi in ("E", "F") and lo in ("A", "B")
         print(f"\n  {hi} vs {lo} -- {what}   paired n={len(inter)} "
               f"(of {len(cov[hi]['have'])} / {len(cov[lo]['have'])} transcripts)")
         if cross_model:
@@ -317,24 +361,43 @@ def main():
                   "(its LONGEST runs) vs ~0% for\n            the arm, so this is a "
                   "DIRECTIONAL LOWER BOUND, not a point estimate -- the true\n"
                   "            base-vs-arm gap is if anything larger.")
+        def paired_delta(vals):
+            """mean of hi, mean of lo, mean paired diff, and its SE.
+
+            SE of the mean paired difference, computed from this run -- registered
+            in place of an unavailable same-condition replicate."""
+            n = len(vals)
+            mh = sum(a for a, _ in vals)/n
+            ml = sum(b for _, b in vals)/n
+            d = [a - b for a, b in vals]
+            md = sum(d)/n
+            var = sum((x-md)**2 for x in d)/(n-1) if n > 1 else 0.0
+            return mh, ml, md, (var/n) ** 0.5
+
         for m in METRICS:
-            pairs = [(sh_[i].get(m), sl_[i].get(m)) for i in inter]
-            pairs = [(a, b) for a, b in pairs
-                     if isinstance(a, (int, float, bool)) and isinstance(b, (int, float, bool))]
+            rows = [(sh_[i], sl_[i]) for i in inter]
+            pairs, rates = [], []
+            for rh_, rl_ in rows:
+                a, b = rh_.get(m), rl_.get(m)
+                if not (isinstance(a, (int, float, bool))
+                        and isinstance(b, (int, float, bool))):
+                    continue
+                pairs.append((float(a), float(b)))
+                na, nb = rh_.get("n_actions"), rl_.get("n_actions")
+                if m not in NOT_A_COUNT and na and nb:
+                    rates.append((float(a)/na, float(b)/nb))
             if not pairs:
                 continue
-            d = [float(a) - float(b) for a, b in pairs]
-            n = len(d)
-            mh = sum(float(a) for a, _ in pairs)/n
-            ml = sum(float(b) for _, b in pairs)/n
-            md = sum(d)/n
-            # SE of the mean paired difference, computed from this run --
-            # registered in place of an unavailable same-condition replicate.
-            var = sum((x-md)**2 for x in d)/(n-1) if n > 1 else 0.0
-            se = (var/n) ** 0.5
+            mh, ml, md, se = paired_delta(pairs)
             flag = "" if (se and abs(md) >= 2*se) else "   (|d| < 2*SE: UNINFORMATIVE)"
             print(f"      {m:24} {ml:8.3f} -> {mh:8.3f}   delta {md:+8.3f} "
                   f"+/- {se:.3f}{flag}")
+            if len(rates) > 1:
+                rh2, rl2, rd, rse = paired_delta(rates)
+                rflag = ("" if (rse and abs(rd) >= 2*rse)
+                         else "   (|d| < 2*SE: LENGTH ARTIFACT)")
+                print(f"        {'per action':22} {rl2:8.4f} -> {rh2:8.4f}   "
+                      f"delta {rd:+8.4f} +/- {rse:.4f}{rflag}")
 
 
 if __name__ == "__main__":

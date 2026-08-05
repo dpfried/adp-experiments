@@ -75,7 +75,8 @@ the net difference under the null, i.e. a McNemar-style test. Registered gate:
 **L1 PASSES, and cleanly.** Predicted `|C−A| ≤ 6/100` with the format rungs
 jointly inert; observed exactly 0, with only 6 discordant instances. Removing
 the stub and matching training's wrapper and absolute-path style changes the
-arm's score not at all.
+arm's score not at all. (Score only — behaviourally the stub is *not* inert;
+§3c-quater.)
 
 **S1: no score effect.** +1 at 0.30·SE. Note the churn underneath it — 11
 instances flip to produce a net of 1 — which is the first sign that this design's
@@ -168,16 +169,24 @@ clearing the gate are called out.
 | `n_edits` | 10.71 | 7.66 | −3.05 ± 1.268 | clears (2.4σ) |
 
 Removing the thinking stub does **not** change the arm's think-tool usage
-detectably. `n_edits` is the only metric of 15 that clears, and with 15 metrics ×
+detectably. *(Superseded — see §3c-quater: it does, at 3.1σ, once the counts are
+normalized by trajectory length. The raw comparison below is diluted by A's
+longer trajectories. The rest of this subsection stands.)* `n_edits` is the only
+metric of 15 that clears, and with 15 metrics ×
 3 rungs at a 2σ gate roughly two false positives are expected — a single isolated
 hit with no coherent companions is exactly what multiplicity noise looks like, so
 **I am not claiming it.** Note also `n_turns_with_thought = 0.000` in every arm
 cell, independently corroborating the 0/100 native-`<think>` count: the arm does
 not use the native thought channel at all.
 
-**C−B (wrapper & path matched) — nothing clears on any of 15 metrics.** Combined
-with `C−A = ±0` on score, format parity is inert on **both** channels. L1 is
-confirmed twice over.
+**C−B (wrapper & path matched) — nothing clears on any of 15 metrics**, raw or
+length-normalized. So the wrapper and the absolute-path change really are inert
+on both channels.
+
+The **stub** rung is not: with `C−A = ±0` on score but think-per-action up 3.97σ
+across A→C, L1 holds as *score* inertness and as behavioural inertness for
+everything except the think channel. See §3c-quater. Stating it as "inert on both
+channels" was too strong.
 
 **D−C (prohibition & 5-phase list) — large, coherent, and all in one direction.**
 
@@ -298,6 +307,47 @@ separate findings. Binary presence flags (`repro_created`, `ran_any_test`,
 Reporting counts where rates were meant is the sixth silent-degradation defect of
 the day. Like the others it produced plausible numbers and raised nothing.
 
+### 3c-quater. The same correction run in reverse: L1 is **not** inert on 15/15
+
+Normalization is not a filter that only removes findings. Applying it uniformly to
+every rung — which I did only after wiring it into `ladder_readout.py` rather than
+computing it by hand for D−C — turns up an effect on the **stub rung** that the
+raw counts hid, in the opposite direction to the D−C corrections:
+
+| rung | metric | raw Δ ± SE | σ | per-action Δ ± SE | σ | sign test |
+|---|---|---|---|---|---|---|
+| B−A | `n_think` | +0.27 ± 0.225 | 1.2 | **+0.0114 ± 0.0037** | **3.11** | 67↑/33↓, z=+3.40 |
+| B−A | `think_arg_chars_total` | +472 ± 545 | 0.9 | **+21.5 ± 8.4** | **2.55** | 61↑/39↓, z=+2.20 |
+| C−A | `n_think` | +0.49 ± 0.229 | 2.1 | **+0.0132 ± 0.0033** | **3.97** | 66↑/33↓, z=+3.32 |
+| C−A | `think_arg_chars_total` | +829 ± 585 | 1.4 | **+17.7 ± 6.2** | **2.86** | 65↑/35↓, z=+3.00 |
+| C−B | `n_think` | +0.22 ± 0.218 | 1.0 | +0.0018 ± 0.0041 | 0.45 | 56↑/43↓, z=+1.31 |
+
+A ratio metric can be outlier-driven, so this is checked two further ways before
+being claimed: the **medians** are positive and close to the means (B−A `n_think`
+median +0.0098 vs mean +0.0114), and a distribution-free **sign test** on the
+paired differences agrees at the same strength. It is not one instance carrying
+the mean.
+
+**What it means.** A's trajectories are longer (`n_actions` 109.1 vs B's 92.0,
+itself only 1.7σ), so the raw think-count comparison was diluted. Per action, the
+arm calls the `think` tool **~34% more often** with the thinking stub removed, and
+writes proportionally more into it. By the attribution rule this belongs to the
+**smallest rung that shows it**: B−A, the stub. C−B is flat, so the wrapper and
+absolute-path changes remain genuinely inert; D−C is flat too, so this is not the
+prohibition.
+
+**The correction to make explicit:** §3b's "the format rungs are inert on 15/15
+behavioural metrics" is **wrong as stated** and should read *inert on score, and
+inert on 13 of 15 behavioural metrics — the two think-channel metrics move once
+length-normalized*. The stub is not behaviourally inert; it is **score-inert**.
+
+**What does not change.** The format-OOD explanation for the base-vs-arm score gap
+is still refuted, and by the same evidence as before: `C−A = ±0` on score, and now
+also a *named, measured* behavioural change that carries **no** score consequence.
+An intervention that visibly moves the model's reasoning rate and moves score by
+zero is stronger evidence against format-OOD than an intervention that moved
+nothing at all, because it rules out "the manipulation never reached the model."
+
 ## 3d. The training-data claim, measured directly instead of inferred
 
 In §3c-bis I wrote that the swezero trajectories "contain almost no
@@ -369,7 +419,9 @@ Per devils-advocate's scope caveat, which is correct:
   verification nor score.
 
 The format-OOD refutation is unaffected by all of this: it rests on B and C being
-inert (L1 passing on both channels), not on D−A.
+**score-inert** (L1 passing on the score channel), not on D−A. §3c-quater sharpens
+rather than weakens it — the stub demonstrably reaches the model (think rate per
+action +3.97σ across A→C) and still moves score by zero.
 
 ## 4. What the score channel cannot do, and what to read instead
 
@@ -380,8 +432,12 @@ arm rung is below that. The score channel has returned a real and useful negativ
 
 The behavioural channel carried the information, as expected: per-instance
 measures have far tighter paired SEs than a 7-vs-11 count comparison, and they
-resolved both L1 (inert on 15/15 metrics) and L2 where score could not. See
-sections 3b/3c. Note §3c-ter's correction: L2's effect is **a ~20% trajectory
+resolved both L1 and L2 where score could not. See sections 3b/3c. Two
+corrections apply to how the behavioural numbers are read, and they point in
+opposite directions: §3c-ter removes four of D−C's six apparent effects as
+trajectory-length artifacts, and §3c-quater **adds** an effect on the stub rung
+that the raw counts hid (L1 is score-inert and inert on 13 of 15 behavioural
+metrics, not 15 of 15). L2's effect is **a ~20% trajectory
 contraction plus suppression of the three prohibited behaviours**, not the six
 independent effects §3b's raw table implies — four of those six do not survive
 normalization by trajectory length. The base cells' behavioural pass is still
