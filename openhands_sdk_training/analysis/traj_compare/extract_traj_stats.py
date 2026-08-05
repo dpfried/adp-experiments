@@ -203,13 +203,25 @@ def analyse(rec, model, resolved_ids):
 
     thought_lens, reason_lens, think_lens = [], [], []
     think_arg_lens = []          # the `think` tool's argument = the model's explicit reasoning
+    # A model can reason on two different channels and `n_think` only sees one of
+    # them. The base model emits native <think>/reasoning blocks and never calls
+    # the think tool; the SFT arm is the exact mirror. Comparing `n_think` across
+    # the two is apples-to-oranges, so count the channels separately and also
+    # count "reasoned at all, either way" for the cross-model comparison.
+    n_native_think = n_reason_content = n_any_reason = 0
     for e in actions:
         thought_lens.append(len(_s(e.get("thought"))))
         reason_lens.append(len(_s(e.get("reasoning_content"))))
         think_lens.append(thinking_len(e))
-        if _s(e.get("tool_name")) == "think":
+        is_tool = _s(e.get("tool_name")) == "think"
+        if is_tool:
             a = tool_args(e)
             think_arg_lens.append(len(_s(a.get("thought")) or _s(a.get("_raw"))))
+        native = think_lens[-1] > 0
+        rc = reason_lens[-1] > 0
+        n_native_think += native
+        n_reason_content += rc
+        n_any_reason += bool(native or rc or is_tool)
 
     # --- repetition / looping
     sigs = [act_signature(e) for e in actions]
@@ -346,6 +358,8 @@ def analyse(rec, model, resolved_ids):
         thought_chars_total=sum(thought_lens), thought_chars_mean=(sum(thought_lens) / len(thought_lens)) if thought_lens else 0,
         thought_chars_max=max(thought_lens) if thought_lens else 0,
         n_turns_with_thought=sum(1 for x in thought_lens if x > 0),
+        n_native_think=n_native_think, n_reason_content=n_reason_content,
+        n_any_reason=n_any_reason,
         reasoning_chars_total=sum(reason_lens), thinking_chars_total=sum(think_lens),
         think_arg_chars_total=sum(think_arg_lens),
         think_arg_chars_mean=(sum(think_arg_lens) / len(think_arg_lens)) if think_arg_lens else 0,
