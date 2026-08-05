@@ -470,3 +470,82 @@ partial-output scoring, a missing merge step, the `n_think_calls` typo, an
 over-broad composite flag, and now a patch-blind tie-break in the harness
 itself. None of the five raised an error. All five would have shipped a
 confident wrong number.
+
+---
+
+## Addendum 6 — L3 is going to fail, and it fails *informatively*. Written before E completed.
+
+**Committed in advance, on partial data, so the interpretation cannot be
+retrofitted to the final number.** At the time of writing E has 34 of 100
+transcripts and F has 100 of 100. The prediction below is what I will conclude
+when E lands, stated now.
+
+### What the partial data shows
+
+| cell | model | template | seen | transcripts | cap-hit | native `<think>` |
+|---|---|---|---|---|---|---|
+| E | base | stock (stub) | 65 | 34 | 21 (32.3%) | **0 / 34** |
+| F | base | nostub | 100 | 100 | **0 (0.0%)** | **100 / 100** |
+| A–D | arm | either | 100 | 100 | 0 (0.0%) | 0 / 100 |
+
+L3 registered `|cap-hit(F) − cap-hit(E)| ≤ 8pp`. The partial gap is **32pp** and
+the direction of both components is already unambiguous. **L3 will fail.**
+
+### Why the failure branch does not apply as written
+
+L3's failure branch says: *inspect the rendered prompts and the vLLM logs before
+interpreting any E/F result; an E−F delta is then confounded by budget rather
+than serving format.* The first half is already done — **Addendum 3's rendered-
+token probe (S0) settled it before any rollout finished**: E and F differ by
+exactly `<think> \n\n </think> \n\n` (`[248068, 271, 248069, 271]`) with a
+byte-identical prefix, verified on the live servers. There is no second
+difference left to find. The mandated inspection has been performed and returns
+"the only difference is the registered manipulation."
+
+So the failure is not a plumbing failure. It is a **failure of the reasoning I
+used to register L3**, and that reasoning is worth quoting against myself:
+
+> The 500-iteration cap counts **agent iterations, not tokens**, so trimming 4
+> tokens per assistant turn has no mechanism by which it should move the cap-hit
+> rate.
+
+The premise "4 tokens ⇒ no behavioural mechanism" is false for base. The four
+tokens are not padding: a *pre-filled, already-closed* `<think>\n\n</think>`
+occupies the reasoning slot and leaves nothing for the model to fill. Measured
+consequence, not inference: base emits a native `<think>` block in **100/100**
+nostub records and **0/34** stock records. The stub does not trim base's
+reasoning, it **closes the channel**. A model denied its reasoning channel takes
+more iterations to get nowhere, and 32% of the time it runs out.
+
+### What this changes
+
+1. **It is inert for the arm and drastic for base, for a reason that was
+   predictable and that I did not predict.** SFT trained the native reasoning
+   channel out of the arm entirely (0/100 native `<think>` in every arm cell,
+   stock or nostub), so for the arm the stub occupies a slot the model was never
+   going to use. Same four tokens, opposite consequence — the manipulation is
+   only "small" relative to a model that still uses the channel.
+2. **E is not a "base under parity" cell.** It measures what happens to base
+   when its reasoning channel is closed. Any E−A number is a comparison between
+   a gagged base and an arm that does not use the channel — interesting, but not
+   the base-vs-arm contrast, and it must not be reported as one.
+3. **F−B remains the right rung, and it was already the registered primary.** No
+   substitution after seeing results: F−B was registered as the base-vs-arm
+   differential before launch, precisely because both sides are nostub.
+4. **The two known biases on F both still point the same way.** F is depressed by
+   the aggregator tie-break (15/100 discarded good patches, Addendum 5) and E by
+   cap-survivorship. Neither touches the arm cells. F−B stays a **directional
+   lower bound**.
+5. **L3 did its job.** It was registered as the cheapest available guard against
+   the ladder silently measuring budget instead of parity. It caught a real
+   budget asymmetry between E and F. That the cause turned out to be the
+   treatment rather than the plumbing is what a placebo check is *supposed* to be
+   able to tell you, and only because S0 had already excluded the alternative.
+
+### What would falsify this reading
+
+If E's native-`<think>` count rises materially above 0 as the remaining ~66
+records land, the "closed channel" account is wrong and the cap-hit gap needs
+another explanation. Recording the threshold now: **more than 5 of E's final
+~100 records emitting a native `<think>` block** falsifies it. (5 is the stock
+baseline already on record for base from the earlier 324-record board run.)
