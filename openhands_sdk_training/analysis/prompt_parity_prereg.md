@@ -83,8 +83,8 @@ correlation, and §3 tests one arm of it.
 
 ## 2. Probe design
 
-One arm (swezero, `/checkpoint/dpf/adp-runs/v2_swezero_inst_4b_a100/output`),
-three prompt cells, the same instances, all six jobs in one pass.
+One arm (swezero, the `v2_swezero_inst_4b_a100` checkpoint), three prompt cells,
+the same instances, all six jobs in one pass.
 
 | cell | template | changes vs control |
 |---|---|---|

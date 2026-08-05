@@ -7,8 +7,10 @@
 #SBATCH --mem=128G
 #SBATCH --time=16:00:00
 #SBATCH --open-mode=append
-#SBATCH --output=/checkpoint/dpf/swebench-eval/logs/%x-%A_%a.out
-#SBATCH --error=/checkpoint/dpf/swebench-eval/logs/%x-%A_%a.err
+#SBATCH --output=logs/%x-%A_%a.out
+#SBATCH --error=logs/%x-%A_%a.err
+#
+# Log paths are relative: submit from $SWEBENCH_ROOT (which has logs/).
 #
 # Prompt-parity probe: does the train/eval task-statement mismatch cost score?
 #
@@ -36,10 +38,12 @@
 # shard, so the shards pool cleanly.
 #
 #   array index K:  cell = K % 3   shard = K / 3
-#   sbatch --array=0-5 run_promptmatch.sbatch [MODEL]
+#   SWEBENCH_ROOT=<eval root> sbatch --array=0-5 run_promptmatch.sbatch <MODEL>
+#     MODEL  the SFT checkpoint dir to probe (the arm under test).
 set -uo pipefail
-MODEL=${1:-/checkpoint/dpf/adp-runs/v2_swezero_inst_4b_a100/output}
-source "${SWEBENCH_ROOT:-/checkpoint/dpf/swebench-eval}/env.sh"
+MODEL=${1:?usage: sbatch --array=0-5 run_promptmatch.sbatch MODEL}
+: "${SWEBENCH_ROOT:?set SWEBENCH_ROOT to the eval root}"
+source "$SWEBENCH_ROOT/env.sh"
 export NUM_WORKERS=${NUM_WORKERS:-16}
 
 K=${SLURM_ARRAY_TASK_ID:?run with --array=0-5}
