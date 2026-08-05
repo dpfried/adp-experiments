@@ -208,6 +208,51 @@ the model **complying with an instruction not to test or verify**. D is the arm
 evaluated under the prompt it was trained on, and that prompt forbids the
 verification behaviour SWE-bench rewards.
 
+### 3c-bis. Decomposition — and a correction to the paragraph above
+
+I audited the `ran_any_test` / `verified_after_edit` classifier rather than
+trusting it, because both are low-base-rate flags carrying a 2.7–2.8σ claim. The
+extractor's `test_turns` is a **composite**: a strict test-runner regex
+(`pytest|tox|unittest|runtests|manage.py test|…`) **OR** a python-run command
+mentioning `repro`/`test`. Decomposing D−C over the extractor's own categories:
+
+| metric | C | D | Δ ± SE | σ | |
+|---|---|---|---|---|---|
+| `repro_created` | 0.300 | 0.020 | −0.280 ± 0.047 | **6.0** | clears |
+| `cmd_pyrun` | 0.430 | 0.000 | −0.430 ± 0.118 | 3.6 | clears |
+| `ran_any_test` | 0.160 | 0.060 | −0.100 ± 0.036 | 2.8 | clears |
+| `verified_after_edit` | 0.080 | 0.010 | −0.070 ± 0.026 | 2.7 | clears |
+| `cmd_pkg` | 0.070 | 0.000 | −0.070 ± 0.029 | 2.4 | clears |
+| `cmd_test` (strict runner) | 3.140 | 1.040 | −2.100 ± 1.626 | 1.3 | **does not clear** |
+| `ran_any_test_ok` | 0.050 | 0.050 | ±0.000 ± 0.014 | 0.0 | **no change at all** |
+
+An independent recount straight off the raw terminal commands agrees: strict
+test-runner *presence* is 0.04–0.07 in **every** cell with no D−C effect
+(+0.020 ± 0.014), while any-python-execution presence drops 0.270 → 0.080
+(−0.190 ± 0.044, 4.3σ).
+
+**Correction to the paragraph above.** Saying the prohibition stops the arm
+"running tests" was too broad. The arm almost never invoked a test runner in
+*any* cell, and the rate of test runs that **actually executed successfully is
+unchanged** (`ran_any_test_ok` 0.050 → 0.050). What the prohibition eliminates is
+precisely the three things line 13 names: **writing reproduction scripts**
+(0.300 → 0.020 — the ladder's single strongest effect at 6.0σ), **executing
+Python** (0.430 → 0.000, literally zero), and **installing packages** (0.070 →
+0.000). The `ran_any_test` and `verified_after_edit` drops are real but are
+driven by the `repro`-script component of that composite, not by test-runner
+invocation.
+
+**This makes the picture more coherent, not less.** *Achieved* verification was
+already at the floor (0.05) and did not move — and score did not move either
+(D−A = +4, noise). Attempted verification changed a great deal; achieved
+verification changed not at all. The two nulls agree.
+
+The training-data implication survives and sharpens: reproduction-script writing
+is the most SWE-bench-relevant debugging behaviour in this list, it runs at 0.30
+under the eval prompt and 0.02 under the training prompt, so the swezero
+trajectories the arm learned from contain **almost no reproduction-script
+demonstrations**.
+
 **The consequence for the campaign is larger than the ladder's own question.**
 The swezero training trajectories were generated under a no-environment
 prohibition, so the arm was trained on demonstrations that produce patches
