@@ -529,9 +529,18 @@ more iterations to get nowhere, and 32% of the time it runs out.
    when its reasoning channel is closed. Any E−A number is a comparison between
    a gagged base and an arm that does not use the channel — interesting, but not
    the base-vs-arm contrast, and it must not be reported as one.
-3. **F−B remains the right rung, and it was already the registered primary.** No
-   substitution after seeing results: F−B was registered as the base-vs-arm
-   differential before launch, precisely because both sides are nostub.
+3. **F−B remains the right rung, and it was designated primary before any
+   results existed.** No substitution after seeing results. **Corrected wording,
+   per devils-advocate, who checked the timeline and was right:** an earlier
+   draft said "before launch," which is false. Verified timestamps, all UTC —
+   array *submitted* 02:58:54, array *started executing* 04:04:09, Addendum 2
+   (naming the F−B differential) committed `b58b721` **03:53**, first arm
+   `merged.report.json` written **07:28**. So F−B was named 55 min after
+   submission, 11 min before the first rollout token was generated, and ~3.5 h
+   before any result existed. Pre-*results* is the bar that matters and it is
+   met with room to spare; pre-*launch* was a stronger claim I could not support
+   and should not have made in a document whose entire subject is
+   pre-registration integrity.
 4. **The two known biases on F both still point the same way.** F is depressed by
    the aggregator tie-break (15/100 discarded good patches, Addendum 5) and E by
    cap-survivorship. Neither touches the arm cells. F−B stays a **directional
@@ -549,3 +558,51 @@ records land, the "closed channel" account is wrong and the cap-hit gap needs
 another explanation. Recording the threshold now: **more than 5 of E's final
 ~100 records emitting a native `<think>` block** falsifies it. (5 is the stock
 baseline already on record for base from the earlier 324-record board run.)
+
+### 6b. The two findings this failure actually delivers — and the asterisk it costs
+
+Added after devils-advocate's review argued I had under-sold the L3 failure.
+Both points are theirs; the measurements below are mine, run on the θ₀ artifact
+itself rather than inferred from the ladder.
+
+**(i) It falsifies "base is stub-native," which `think_stub_prereg.md` §2
+registered as a real open question.** That document was explicit that the whole
+base-is-in-distribution premise rests on an untested step — "if base is
+genuinely stub-native, removing the stub should **hurt** base." Removing it did
+not hurt base; it un-gagged base. Cap-hit 32.3% → 0.0%, native `<think>`
+0/34 → 100/100. The shipped template's `enable_thinking=False` stub is **not**
+base's home format. This is a cleaner headline than "a placebo check failed,"
+and it is a direct answer to a question that was registered before any of this
+ran.
+
+**(ii) It closes the base cap-hit mystery from the infra-asymmetry thread.**
+Measured directly on `out_v2_init_singlerun_4b` — the θ₀ = 119/500 run itself,
+not a proxy:
+
+| | records | native `<think>` | MaxIterationsReached |
+|---|---|---|---|
+| θ₀ board run (base, **stub**) | 500 | **4 (0.8%)** | **131 (26.2%)** |
+| ladder E (base, **stub**) | 34 so far | 0 | 32.3% |
+| ladder F (base, **nostub**) | 100 | **100 (100%)** | **0 (0.0%)** |
+
+The ~26% cap-hit rate that was flagged weeks ago and never mechanistically
+closed is the same stub-gag: reasoning channel closed → iterations burned →
+cap. Three independent runs line up on it. That is the strongest form an
+informative failure takes — it resolves a previously-open question rather than
+merely excusing itself.
+
+**The asterisk, which is the reason to believe this is not a motivated
+rescue.** θ₀ = 119/500 was measured with base's reasoning channel closed and
+26.2% of its instances dying at the iteration cap. **119 is a base FLOOR, not a
+point estimate**, and un-gagged base plausibly scores higher. Every future quote
+of θ₀ — including in `adp-v2-swebench-arm-results` — needs "measured with the
+reasoning channel gagged" attached.
+
+Note what this does and does not do to the campaign verdict. It does **not**
+rescue the arms: the stub is inert for them (0/100 native `<think>` in all four
+arm cells, stock or nostub, because SFT removed the channel), so un-gagging base
+only **widens** base ≫ arms. The SFT-lift-is-null-to-negative verdict gets
+stronger, not weaker. Re-explaining a failed placebo in a way that softens my
+own headline anchor while strengthening the conclusion I already hold is the
+opposite of the shape motivated reasoning takes — but the asterisk is owed
+regardless of which way it cuts.
