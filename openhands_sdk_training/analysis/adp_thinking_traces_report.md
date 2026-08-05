@@ -530,12 +530,14 @@ It remains **n=1 on the base side** — a hypothesis worth a targeted test, not 
    the worst arm (35/500). But **n = 1 and confounded**: scale also emits tool names the
    scaffold does not offer (`execute_bash` ×451, `str_replace_editor` ×53), so it differs
    in more ways than this one.
-2. **SFT attenuates the behaviour relative to its own training data** — swezero 7.1% → 2.9%
+2. **`think` is a smaller fraction of the arms' eval calls than of their training calls**
+   — swezero 7.1% → 2.9%
    of calls, coderforge 6.5% → 1.6%, rebench 4.3% → 1.2% — and changes its *shape*: base
    concentrates thinking (58% of instances, 13.4 calls each) while the arms sprinkle it
    (~98% of instances, ~2.5 calls each). This is the same signature as the lost verify loop
-   documented in `adp_v3_a1_preregistration.md` §17: the behaviour is present in the data
-   but not reproduced at the same rate. **Refined by §3.4c:** the token-share ordering is
+   documented in `adp_v3_a1_preregistration.md` §17. The *shape* change is a real finding;
+   the *rate* change is subject to the same denominator caveat as the token shares (eval and
+   training call mixes are over different task distributions), so read it as descriptive. **Refined by §3.4c:** the token-share ordering is
    preserved without inversion, though the eval/train *ratio* is not interpretable as
    attenuation (incomparable denominators).
 3. **The behaviour transmits; it just isn't the lever.** §3.4c is a positive control **for
