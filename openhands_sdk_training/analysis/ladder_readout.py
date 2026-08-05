@@ -148,7 +148,16 @@ def read_cell(root, tagbase):
 
 
 def read_score(root, tagbase, suffix=""):
-    resolved, scored = set(), 0
+    """-> (resolved ids, scored count, scored ids).
+
+    The scored id set is NOT redundant with the rollout id set: a shard whose
+    report has not merged yet contributes rollouts but no verdicts. Pairing on
+    "present in the rollout file" instead of "has a verdict in this scoring run"
+    silently counts an unscored shard's instances as unresolved -- which is how a
+    half-scored cell F got printed as `2 -> ... on n=100` when only 50 of its
+    instances had been scored at all. Pair on verdicts.
+    """
+    resolved, scored_ids = set(), set()
     for sh in SHARDS:
         rep = os.path.join(root, "runs", f"score_{tagbase}__s{sh}{suffix}",
                            "merged.report.json")
@@ -159,8 +168,8 @@ def read_score(root, tagbase, suffix=""):
         except Exception:
             continue
         resolved |= set(j.get("resolved_ids") or [])
-        scored += len(j.get("resolved_ids") or []) + len(j.get("unresolved_ids") or [])
-    return resolved, scored
+        scored_ids |= set(j.get("resolved_ids") or []) | set(j.get("unresolved_ids") or [])
+    return resolved, len(scored_ids), scored_ids
 
 
 def count_retried(root, tagbase):
@@ -268,7 +277,7 @@ def main():
         statsp = sys.argv[sys.argv.index("--stats") + 1]
     stats = load_stats(statsp)
 
-    cov, sc = {}, {}
+    cov, sc, sids = {}, {}, {}
     print("=" * 100)
     print("COVERAGE + CAP-HIT (secondary outcome, all six cells)")
     print("=" * 100)
@@ -372,9 +381,9 @@ def main():
           f"{'emptyPatch':>11} {'discarded':>10} {'repaired':>18} {'attempt1':>12}")
     warn = []
     for c, tagbase, model, *_ in CELLS:
-        res, n = read_score(root, tagbase)
+        res, n, nids = read_score(root, tagbase)
         empty, disc = count_discarded(root, tagbase)
-        rres, rn = read_score(root, tagbase, "_reagg")
+        rres, rn, _ = read_score(root, tagbase, "_reagg")
         # The repaired resolved set is the original PLUS anything the rescued
         # records resolve; the rescued instances were scored on an empty patch in
         # the original, so they are necessarily unresolved there.
@@ -386,15 +395,17 @@ def main():
         else:
             pair = "n/a (no-op)"
         sc[c] = (res, n)
+        sids[c] = nids
         if disc and rn:
             sc[c + "*"] = (res | rres, n)
         # Attempt-1-only scoring: the COMPUTE-MATCHED contrast (amendment
         # Addendum 7). One rollout per instance, temp 0, no critic selection, in
         # every cell -- unlike the aggregated column, where the critic handed
         # base 2.32 rollouts/instance and the arm ~1.04.
-        a1res, a1n = read_score(root, tagbase, "_a1")
+        a1res, a1n, a1ids = read_score(root, tagbase, "_a1")
         if a1n:
             sc[c + "@1"] = (a1res, a1n)
+            sids[c + "@1"] = a1ids
             a1col = f"{len(a1res):3} / {a1n:3}"
         else:
             a1col = "-"
@@ -439,8 +450,12 @@ def main():
         if not nh or not nl:
             print(f"  {hi}-{lo:2} {what:32} score: (awaiting scoring)")
             continue
-        # paired on the intersection of scored instances
-        inter = (cov[hi]["all"] & cov[lo]["all"])
+        # paired on the intersection of instances SCORED in both cells -- see
+        # read_score: an unmerged shard otherwise reads as all-unresolved
+        inter = (cov[hi]["all"] & cov[lo]["all"]
+                 & sids.get(hi, set()) & sids.get(lo, set()))
+        if len(inter) < NEXP:
+            what = what + f" [PART {len(inter)}]"
         ph = len(rh & inter); pl = len(rl & inter)
         d = ph - pl
         flip_up = len((rh - rl) & inter); flip_dn = len((rl - rh) & inter)
@@ -470,14 +485,20 @@ def main():
             r1, n1 = sc.get(c + "@1", (set(), 0))
             if not na or not n1:
                 continue
-            retried = count_retried(root, _tag[c])
+            # The identity only holds on instances scored in BOTH runs. Comparing
+            # a 100-instance aggregate against a half-merged 50-instance a1 run
+            # manufactures a 25-point "move" out of missing shards.
+            shared = sids.get(c, set()) & sids.get(c + "@1", set())
+            ra, r1 = ra & shared, r1 & shared
+            retried = count_retried(root, _tag[c]) & shared
             move = abs(len(ra) - len(r1))
             ok = move <= len(retried)
             flag = "ok" if ok else "!! IMPOSSIBLE"
             if not ok:
                 bad.append(c)
+            part = "" if len(shared) >= NEXP else f"  [on {len(shared)} shared]"
             print(f"    {c}: agg {len(ra):3} vs a1 {len(r1):3}  |move|={move:3} "
-                  f" retried={len(retried):3}  {flag}")
+                  f" retried={len(retried):3}  {flag}{part}")
             # On a NON-retried instance, agg and a1 score the byte-identical
             # rollout, so any disagreement is scoring non-reproducibility. A couple
             # of these are expected from genuinely flaky tests; many indicate the
@@ -510,7 +531,13 @@ def main():
                 print(f"  {hi}-{lo:2} {what:40} (awaiting attempt-1 scoring)")
                 continue
             a1h = read_attempt1(root, _tag[hi]); a1l = read_attempt1(root, _tag[lo])
-            inter = a1h["all"] & a1l["all"]
+            # Pair on instances that BOTH have a rollout and were scored in both
+            # a1 runs. Dropping the sids terms treats a not-yet-merged shard as
+            # 50 unresolved instances and understates that cell.
+            inter = (a1h["all"] & a1l["all"]
+                     & sids.get(hi + "@1", set()) & sids.get(lo + "@1", set()))
+            if len(inter) < NEXP:
+                what = what + f" [PARTIAL {len(inter)}/{NEXP}]"
             ph, pl = len(rh & inter), len(rl & inter)
             b = len((rh - rl) & inter); c_ = len((rl - rh) & inter)
             se = (b + c_) ** 0.5
