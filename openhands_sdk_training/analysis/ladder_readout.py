@@ -51,6 +51,55 @@ def _native_think(rec):
     return n
 
 
+def read_attempt1(root, tagbase):
+    """Cap-hit over the FIRST critic attempt only, pooled over both shards.
+
+    Why attempt 1 rather than the aggregated `output.jsonl`:
+
+      * `output.jsonl` is an append log of every attempt while the job runs, and
+        is REWRITTEN by `aggregate_results(final_output_file="output.jsonl")`
+        only at the very end. Reading it mid-flight and reading it after
+        completion are two different measurements, so an incomplete cell is not
+        comparable with a complete one.
+      * `benchmarks/utils/evaluation.py` raises temperature 0.0 -> 0.1 for
+        attempt > 1. Attempts 2-3 are therefore a different sampling regime, and
+        which instances even get an attempt 2 depends on the critic. Pooling all
+        attempts compares different mixtures per cell.
+      * Attempt 1 is deterministic (temp 0), runs on ALL instances in both
+        cells, and its rollouts are frozen in `output.critic_attempt_1.jsonl`,
+        which aggregation never touches.
+
+    So attempt 1 is the matched comparison, and it is available for a cell that
+    never finishes. Returns None if the attempt-1 files are absent.
+    """
+    ids, capped, tx = set(), set(), set()
+    found = False
+    for sh in SHARDS:
+        d = os.path.join(root, "runs", f"out_{tagbase}__s{sh}")
+        pat = os.path.join(d, "**", "output.critic_attempt_1.jsonl")
+        for f in glob.glob(pat, recursive=True):
+            found = True
+            for line in open(f):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    r = json.loads(line)
+                except Exception:
+                    continue
+                iid = r.get("instance_id")
+                if not iid:
+                    continue
+                ids.add(iid)
+                if r.get("history") or r.get("events"):
+                    tx.add(iid)
+                if "MaxIterationsReached" in str(r.get("error") or ""):
+                    capped.add(iid)
+    if not found:
+        return None
+    return {"all": ids, "capped": capped, "have": tx}
+
+
 def read_cell(root, tagbase):
     """Return per-instance coverage for a cell, pooled over its two shards."""
     have, capped, errored, all_ids = set(), set(), set(), set()
@@ -95,7 +144,7 @@ def read_cell(root, tagbase):
     capped -= have
     blanks = all_ids - have
     return {"all": all_ids, "have": have, "blank": blanks, "capped": capped,
-            "native": native}
+            "errored": errored, "native": native}
 
 
 def read_score(root, tagbase, suffix=""):
@@ -224,10 +273,55 @@ def main():
     # FAIL that is purely a partial-data artifact.
     ce, cf = cov.get("E"), cov.get("F")
     NEXP = 100                       # 2 shards x 50 instances per cell
+
+    # Attempt-1-matched form, printed first because it is the better-matched
+    # measurement and does not depend on either cell finishing. See
+    # read_attempt1() for why the aggregated file is not comparable mid-flight.
+    _tag = {c[0]: c[1] for c in CELLS}
+    a1e, a1f = read_attempt1(root, _tag["E"]), read_attempt1(root, _tag["F"])
+    if a1e and a1f and a1e["all"] and a1f["all"]:
+        inter = a1e["all"] & a1f["all"]
+        pe = 100.0 * len(a1e["capped"] & inter) / max(1, len(inter))
+        pf = 100.0 * len(a1f["capped"] & inter) / max(1, len(inter))
+        d1 = pf - pe
+        v1 = "PASS" if abs(d1) <= 8.0 else "FAIL"
+        print(f"\n  L3 placebo (cap-hit), ATTEMPT-1 MATCHED (temp 0 in both, "
+              f"n={len(inter)} shared instances):")
+        print(f"       E={pe:.1f}% ({len(a1e['capped'] & inter)})  "
+              f"F={pf:.1f}% ({len(a1f['capped'] & inter)})  "
+              f"delta={d1:+.1f}pp  -> {v1} the registered <=8pp gate")
+        print(f"       E attempt-1 coverage {len(a1e['all'])}/{NEXP}, "
+              f"F {len(a1f['all'])}/{NEXP}. This is a deviation from the letter of "
+              f"the\n       registration (which named the aggregated cell) and a "
+              f"strictly better match on\n       attempt index, temperature and "
+              f"instance set. Both forms are reported; neither\n       is quietly "
+              f"substituted for the other.")
     if ce and cf and (len(ce["all"]) < NEXP or len(cf["all"]) < NEXP):
-        print(f"\n  L3 placebo (cap-hit): awaiting completion "
+        print(f"\n  L3 placebo (cap-hit), REGISTERED FORM: awaiting completion "
               f"(E {len(ce['all'])}/{NEXP}, F {len(cf['all'])}/{NEXP}) -- "
               f"cap-hit is only interpretable on a complete cell")
+        # E runs 3 attempts per shard and a gagged base burns the full 500
+        # iterations, so E may exhaust its walltime before 100/100. If it does,
+        # the registered form is never evaluable and would silently print
+        # "awaiting" forever. Report the intersection-paired version too, but
+        # only as an explicitly labelled DEVIATION: every instance that reached
+        # a terminal state has a real classification, so the intersection is a
+        # legitimate paired comparison -- it is just not the test that was
+        # registered, and swapping it in silently is the move this whole
+        # analysis exists to forbid.
+        inter = (ce["have"] | ce["errored"]) & (cf["have"] | cf["errored"])
+        if inter:
+            re_ = 100.0 * len(ce["capped"] & inter) / len(inter)
+            rf_ = 100.0 * len(cf["capped"] & inter) / len(inter)
+            dd = rf_ - re_
+            would = "would FAIL" if abs(dd) > 8.0 else "would PASS"
+            print(f"  L3 (DEVIATION, intersection-paired, n={len(inter)} "
+                  f"terminal in both cells): E={re_:.1f}%  F={rf_:.1f}%  "
+                  f"delta={dd:+.1f}pp  -> {would} the registered <=8pp gate")
+            print("       Not a substitute for the registered test. The reading of an L3 "
+                  "failure was\n       pre-committed in amendment Addendum 6 at 32pp, on "
+                  "partial data, before this\n       number existed -- so it cannot have "
+                  "been retrofitted to it.")
     elif ce and cf and ce["all"] and cf["all"]:
         re_ = 100.0 * len(ce["capped"]) / len(ce["all"])
         rf_ = 100.0 * len(cf["capped"]) / len(cf["all"])

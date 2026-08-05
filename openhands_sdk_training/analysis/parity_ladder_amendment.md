@@ -605,6 +605,48 @@ Two things follow, and they must not be merged:
   node into a behavioural claim. Every cap number in this document means
   `MaxIterationsReached` specifically and should be read that way.
 
+### 6b-pre. How the harness writes results, and the matched form of L3
+
+Read out of `benchmarks/utils/evaluation.py` + `utils/evaluation_utils.py` after
+noticing that E's `output.jsonl` had 99 rows all tagged `attempt=1` while F's had
+exactly 100 spread over attempts 1/2/3. Three facts, none of them documented
+anywhere in the kit:
+
+1. Each attempt's rollouts are frozen in `output.critic_attempt_{N}.jsonl`.
+2. `output.jsonl` is an **append log of every attempt while the job runs**, and is
+   **rewritten** by `aggregate_results(final_output_file="output.jsonl")` only at
+   the very end. Reading it mid-flight and reading it after completion are
+   therefore *two different measurements*.
+3. **Attempts 2–3 raise temperature 0.0 → 0.1.** Attempt 1 is deterministic;
+   retries are not. Which instances get an attempt 2 at all is decided by the
+   critic.
+
+Consequence for L3: pooling all attempts compares *different mixtures* per cell,
+and an incomplete cell is not comparable with a complete one at all. The matched
+comparison is **attempt 1**: temp 0 in both cells, run on every instance in both
+cells, frozen on disk, untouched by aggregation, and available for a cell that
+never finishes.
+
+| attempt-1 rollouts (temp 0, all instances) | n | `MaxIterationsReached` | cap% |
+|---|---|---|---|
+| E (base, **stub**) | 99 | **35** | **35.4%** |
+| F (base, **nostub**) | 100 | **0** | **0.0%** |
+
+35 / 99 vs 0 / 100 on the shared instance set. **L3 fails at −35.4pp against a
+registered ≤8pp gate**, on the best-matched form of the test rather than the most
+convenient one. This is a deviation from the letter of the registration, which
+named the aggregated cell; it is reported alongside the registered form, not
+substituted for it, and the direction was pre-committed in Addendum 6 at 32pp
+before this number existed.
+
+**Also a live hazard, and defect #6 in the silent-degradation catalogue:** if E is
+killed by walltime, `aggregate_results` never runs and E's `output.jsonl` is left
+as a raw append log — potentially with duplicate `instance_id`s across attempts.
+Anything downstream that assumes one row per instance would then double-count
+without erroring. `read_cell()` is set-based and safe; the scoring path is not
+obviously so, and an E that times out must not be scored without checking this
+first.
+
 ### What would falsify this reading
 
 If E's native-`<think>` count rises materially above 0 as the remaining ~66
