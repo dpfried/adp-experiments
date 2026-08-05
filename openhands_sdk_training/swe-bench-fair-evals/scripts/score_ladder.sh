@@ -90,11 +90,43 @@ for entry in $CELLS; do
       echo "WAIT  $TAG (incomplete: $TOT/$EXP, infer element gone -- may have died)"; continue
     fi
 
+    # --- dedup guard: a retried/restarted shard APPENDS, so output.jsonl can hold
+    # more rows than instances (observed: F__s00 at 85 rows / 50 unique ids). The
+    # scorer shards by LINE, so duplicates would inflate `total` and the reported
+    # rate would be computed over a denominator > the shard size. Score a deduped
+    # copy instead, keeping the LAST row per instance_id (the most recent attempt,
+    # i.e. the one from the run that completed).
+    UNIQ=$(python3 -c "
+import json,sys
+seen=set()
+for line in open('$OJ'):
+    line=line.strip()
+    if line:
+        try: seen.add(json.loads(line)['instance_id'])
+        except Exception: pass
+print(len(seen))")
+    NROWS=$(wc -l < "$OJ")
+    SCORE_IN="$OJ"
+    if [ "$NROWS" -ne "$UNIQ" ]; then
+      SCORE_IN="${OJ%.jsonl}.dedup.jsonl"
+      python3 -c "
+import json,collections
+last=collections.OrderedDict()
+for line in open('$OJ'):
+    line=line.strip()
+    if not line: continue
+    try: r=json.loads(line)
+    except Exception: continue
+    last[r['instance_id']]=line
+open('$SCORE_IN','w').write('\n'.join(last.values())+'\n')"
+      echo "DEDUP $TAG ($NROWS rows -> $UNIQ unique; scoring $(basename "$SCORE_IN"))"
+    fi
+
     # eligible. wipe any stale partial shard reports so the glob-merge is clean.
     if [ "$NREP" -gt 0 ]; then rm -rf "$SDIR"; fi
-    echo "SUBMIT $TAG ($TOT/$EXP instances)"
+    echo "SUBMIT $TAG ($UNIQ unique / $EXP expected)"
     sbatch --job-name="sc_$TAG" --array=0-$((NSH-1)) \
       --export=ALL,SWEBENCH_ROOT \
-      scripts/run_score_shards.sbatch "$OJ" "$TAG" "$NSH"
+      scripts/run_score_shards.sbatch "$SCORE_IN" "$TAG" "$NSH"
   done
 done
