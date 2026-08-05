@@ -378,15 +378,22 @@ def main():
     print("=" * 100)
     print("  These use the AS-HARNESS resolved sets (the pre-registered primary). Where\n"
           "  the SCORE table above shows a repaired pair for a base cell, read any rung\n"
-          "  touching that cell alongside the repaired number -- the defect biases base\n"
-          "  LOW, so E/F rungs against an arm are conservative in the base direction.")
+          "  touching that cell alongside the repaired number.")
+    print("  !! CROSS-MODEL RUNGS (E-A, F-B) ARE NOT COMPUTE-MATCHED. See the rollout\n"
+          "     parity table above: the critic retried base 71/100 times and the arm\n"
+          "     2-5/100, so base got ~2.2x the rollouts AND a best-of-3 selection at\n"
+          "     temperature 0.1. That inflates base. The tie-break defect deflates base.\n"
+          "     Biases run BOTH ways and one is unquantified, so F-B is a two-sided point\n"
+          "     estimate, NOT a lower bound -- an earlier version of this script labelled\n"
+          "     it [LB], which was wrong. The compute-matched contrast is the attempt-1\n"
+          "     scoring (score_attempt1_ladder.sh); read that before quoting F-B.")
     rungs = [("B", "A", "stub removed"),
              ("C", "B", "wrapper & path matched"),
              ("D", "C", "prohibition & 5-phase list"),
              ("F", "E", "stub removed (base)"),
              ("C", "A", "L1: format rungs jointly"),
              ("E", "A", "base vs arm, both stock"),
-             ("F", "B", "base vs arm, both nostub [LB]")]
+             ("F", "B", "base vs arm, nostub [NOT compute-matched]")]
     for hi, lo, what in rungs:
         rh, nh = sc.get(hi, (set(), 0))
         rl, nl = sc.get(lo, (set(), 0))
@@ -441,7 +448,7 @@ def main():
     # is unmoved. Reading L1 off the score line alone would have missed it.
     for hi, lo, what in rungs[:4] + [("C", "A", "L1: format rungs jointly"),
                                      ("E", "A", "base vs arm, both stock"),
-                                     ("F", "B", "base vs arm, both nostub [LB]")]:
+                                     ("F", "B", "base vs arm, nostub [NOT compute-matched]")]:
         sh_, sl_ = stats.get(hi, {}), stats.get(lo, {})
         inter = sorted(set(sh_) & set(sl_) & cov[hi]["have"] & cov[lo]["have"])
         if not inter:

@@ -605,6 +605,75 @@ Two things follow, and they must not be merged:
   node into a behavioural claim. Every cap number in this document means
   `MaxIterationsReached` specifically and should be read that way.
 
+## Addendum 7 — the primary comparison is not compute-matched, and this bias inflates base
+
+**This is the most consequential defect found in the ladder so far, and it cuts
+against the headline rather than for it.** Found while chasing an unrelated
+discrepancy (E's `output.jsonl` rows were all tagged `attempt=1` while F's spanned
+attempts 1–3).
+
+The harness runs up to `n_critic_runs` attempts per instance and retries whichever
+instances its critic judges failed (`_get_instances_for_attempt` →
+`get_failed_instances` → `critic.evaluate(events, patch)`). Every cell was
+launched with **identical** configuration — same critic, `n_critic_runs = 3`, no
+per-cell flags. What the cells actually consumed:
+
+| cell | attempt 1 | attempt 2 | attempt 3 | rollouts / instance |
+|---|---|---|---|---|
+| A arm stock | 100 | 5 | 0 | 1.05 |
+| B arm nostub | 100 | 3 | 1 | **1.04** |
+| C arm nostub wrapper | 100 | 4 | 0 | 1.04 |
+| D arm nostub trainprompt | 100 | 2 | 0 | 1.02 |
+| E base stock | 99 | 0* | 0* | (in flight) |
+| F base nostub | 100 | 71 | 61 | **2.32** |
+
+\* E is still running; s01 had just entered attempt 2 at the time of measurement.
+
+The critic rejected base's first attempt **71/100** times and the arm's **2–5/100**
+times. So F received ~2.2× the rollouts of B *and* a best-of-3 selection over
+them, while the arm cells were effectively single-shot. Attempts 2–3 also sample
+at **temperature 0.1** rather than 0 (`evaluation.py` raises it for `attempt > 1`),
+so F's extra rollouts are additionally diversified.
+
+**This is not a bug and not a misconfiguration.** It is the harness spending more
+compute on whichever model its critic dislikes. It is nonetheless a confound for
+any "base vs arm" claim, because F−B now bundles the model contrast with a
+2.2× compute-and-selection advantage to base.
+
+### The correction this forces to my own earlier claim
+
+I wrote, in Addendum 6 point 4, that the two known biases on F "both still point
+the same way" and therefore **"F−B stays a directional lower bound."** That is
+now **wrong and withdrawn.** The tie-break (Addendum 5, worth +2) and E's
+cap-survivorship both depress base; this one *inflates* base, and unlike those
+two its magnitude is not yet measured. With biases pointing in both directions
+and one of them unquantified, F−B = +19 (as-harness) / +21 (repaired) is a
+**point estimate with two-sided uncertainty, not a lower bound.** I should not
+have called it a lower bound on the strength of an enumeration of biases I had
+not finished making — "both the biases I have found so far point one way" is not
+the same claim as "the bias points one way," and I elided the difference.
+
+### The compute-matched contrast, and why attempt 1 is the right one
+
+Attempt 1 is matched on everything that differs above: exactly one rollout per
+instance, temperature 0, all 100 instances in every cell, no critic selection,
+and frozen in `output.critic_attempt_1.jsonl`, which `aggregate_results` never
+rewrites. Scored via `analysis/attempt1_subset.py` +
+`swe-bench-fair-evals/scripts/score_attempt1_ladder.sh` (CPU-only, scavenge,
+same sandbox-collision and idempotency guards as the repair pass; 10 shards
+submitted, E deferred until its inference finishes).
+
+**Registered before those scores exist, so it cannot be retrofitted:** F−B at
+matched compute should come out **smaller than +19**, because the advantage
+being removed is base's. I expect it to remain clearly positive — F's 27
+resolves cannot all be selection artifacts when 29 of its 100 instances
+finalized at attempt 1 — but I am committing to reporting whatever it is,
+including the case where the gap collapses. If matched-compute F−B falls below
+~2·SE (roughly ±8/100 here), then **the campaign has no demonstrated
+within-harness base-vs-arm gap at matched compute**, and the correct statement
+becomes that the arms are not distinguishable from base rather than that base
+beats them.
+
 ### 6b-pre. How the harness writes results, and the matched form of L3
 
 Read out of `benchmarks/utils/evaluation.py` + `utils/evaluation_utils.py` after
