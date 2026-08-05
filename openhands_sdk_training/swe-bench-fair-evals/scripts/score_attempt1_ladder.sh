@@ -28,8 +28,15 @@ cd "$R"
 NSH=2
 QUEUED=$(squeue --me -h -o '%j' 2>/dev/null | sort -u | tr '\n' ' ')
 
-for T in par_A_arm_stock_evalp par_B_arm_nostub_evalp par_C_arm_nostub_wrap \
-         par_D_arm_nostub_trainp par_E_base_stock_evalp par_F_base_nostub_evalp; do
+# LADDER_CELLS restricts which cells this tick may act on. Needed because the
+# script is run from a polling watcher: while a controlled experiment is in the
+# queue (e.g. re-scoring one cell alone to test for sandbox collision), a tick
+# that helpfully submits another cell would run it concurrently over the same
+# shared instance set and invalidate the experiment. Merging is unaffected --
+# restrict the list, wait, then restore it.
+CELLS=${LADDER_CELLS:-"par_A_arm_stock_evalp par_B_arm_nostub_evalp par_C_arm_nostub_wrap
+                       par_D_arm_nostub_trainp par_E_base_stock_evalp par_F_base_nostub_evalp"}
+for T in $CELLS; do
   for SH in 00 01; do
     TAG="${T}__s${SH}"
     OUTD="$R/runs/out_$TAG"
