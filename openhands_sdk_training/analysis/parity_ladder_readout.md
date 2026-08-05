@@ -140,6 +140,87 @@ adds that prompt/format mismatch is **not** the explanation for it.
 
 ---
 
+## 3b. The behavioural channel — a clean format/semantic dissociation
+
+Paired on all 100 instances (every arm cell has 100/100 transcripts, so the
+intersection is the full set). `±SE` is the SE of the mean paired difference;
+registered gate `|mean Δ| < 2·SE` is uninformative. 15 metrics; only those
+clearing the gate are called out.
+
+**S1 (B−A, stub removed) — the registered primary outcome is NULL.**
+
+| metric | A | B | Δ ± SE | |
+|---|---|---|---|---|
+| `n_think` | 2.59 | 2.86 | +0.27 ± 0.225 | uninformative |
+| `n_turns_with_thought` | 0.000 | 0.000 | ±0.000 | zero in every cell |
+| `verified_after_edit` | 0.060 | 0.040 | −0.020 ± 0.028 | uninformative |
+| `ran_any_test` | 0.120 | 0.140 | +0.020 ± 0.040 | uninformative |
+| `n_edits` | 10.71 | 7.66 | −3.05 ± 1.268 | clears (2.4σ) |
+
+Removing the thinking stub does **not** change the arm's think-tool usage
+detectably. `n_edits` is the only metric of 15 that clears, and with 15 metrics ×
+3 rungs at a 2σ gate roughly two false positives are expected — a single isolated
+hit with no coherent companions is exactly what multiplicity noise looks like, so
+**I am not claiming it.** Note also `n_turns_with_thought = 0.000` in every arm
+cell, independently corroborating the 0/100 native-`<think>` count: the arm does
+not use the native thought channel at all.
+
+**C−B (wrapper & path matched) — nothing clears on any of 15 metrics.** Combined
+with `C−A = ±0` on score, format parity is inert on **both** channels. L1 is
+confirmed twice over.
+
+**D−C (prohibition & 5-phase list) — large, coherent, and all in one direction.**
+
+| metric | C | D | Δ ± SE | σ |
+|---|---|---|---|---|
+| `ran_any_test` | 0.160 | 0.060 | −0.100 ± 0.036 | 2.8 |
+| `verified_after_edit` | 0.080 | 0.010 | −0.070 ± 0.026 | 2.7 |
+| `n_think` | 3.08 | 2.54 | −0.54 ± 0.211 | 2.6 |
+| `n_actions` | 95.80 | 76.38 | −19.42 ± 7.810 | 2.5 |
+| `n_terminal` | 43.75 | 33.94 | −9.81 ± 4.029 | 2.4 |
+| `n_file_editor` | 47.95 | 38.87 | −9.08 ± 4.010 | 2.3 |
+
+Six metrics clear, every one negative. Unlike the isolated `n_edits` hit, these
+are mutually coherent and their direction was predictable from the prompt text
+before looking (see below), so multiplicity does not explain them.
+
+**Per the registered attribution rule, the effect is assigned to D−C — the
+semantic rung — and to no format rung.** The ladder's central design question
+("is the arm's deficit a format artifact?") gets a clean answer: format changes
+nothing on either channel; the semantic content changes behaviour substantially.
+
+## 3c. Why D behaves that way — the mechanism is explicit in the prompt
+
+This is not a subtle distributional effect. Line 13 of the training prompt
+(`prompts/train_swezero_noenv.j2`) says:
+
+> The development environment is unavailable. This means you **CANNOT RUN PYTHON
+> CODE for any purpose. Do not write or execute any tests. Do not use Python to
+> check your work in any way.** Do not install any packages.
+
+And the phase lists differ in exactly the way that implies. The eval prompt has 8
+phases including **2. RUNNING** (install and run the tests), **4. TEST CREATION**,
+and **7. VERIFICATION**. The training prompt has 5 and contains none of them:
+READING → EXPLORATION → FIX ANALYSIS → FIX IMPLEMENTATION → FINAL REVIEW.
+
+So `ran_any_test` −0.100, `verified_after_edit` −0.070 and `n_actions` −19.4 are
+the model **complying with an instruction not to test or verify**. D is the arm
+evaluated under the prompt it was trained on, and that prompt forbids the
+verification behaviour SWE-bench rewards.
+
+**The consequence for the campaign is larger than the ladder's own question.**
+The swezero training trajectories were generated under a no-environment
+prohibition, so the arm was trained on demonstrations that produce patches
+*without ever running or checking them*. That is a property of the **training
+data**, not of the eval prompt — and it is not fixable by aligning prompts. It
+reframes the arms' deficit from "evaluated out of distribution" to "trained on a
+distribution that omits verification."
+
+Two independent lines now point the same way: aligning the eval prompt to
+training does not improve score (D−A = +4, noise), and aligning it makes the arm
+verify *less* (D−C, 2.7σ). The out-of-distribution explanation is refuted from
+both directions.
+
 ## 4. What the score channel cannot do, and what to read instead
 
 At n=100 and ~7–11% resolve rates, with same-condition churn of ~14 instances,
@@ -147,12 +228,18 @@ this design can only detect score effects of roughly ±7 instances or more. Ever
 arm rung is below that. The score channel has returned a real and useful negative
 (L1 passes; format parity is inert) but it cannot adjudicate L2.
 
-The behavioural channel is where the remaining information is: `n_actions`,
-`ran_any_test`, `verified_after_edit`, `finish_claims_success`, and think-tool
-rate are per-instance continuous or high-base-rate measures, so their paired SEs
-are far tighter than a 7-vs-11 count comparison. That pass (`extract_traj_stats.py`
-across all six cells, then `ladder_readout.py --stats`) is next, and is where S1's
-actual registered outcome — the think-tool rate — gets read.
+The behavioural channel carried the information, as expected: per-instance
+measures have far tighter paired SEs than a 7-vs-11 count comparison, and they
+resolved both L1 (inert on 15/15 metrics) and L2 (6 metrics clearing at 2.3–2.8σ)
+where score could not. See sections 3b/3c. The base cells' behavioural pass is
+still pending their inference.
+
+**A readout bug worth recording:** the metric list said `n_think_calls`, which
+`extract_traj_stats.py` does not emit (the key is `n_think`). The metric loop
+skips absent keys silently, so **S1's registered primary outcome was being
+dropped with no warning** — the first behavioural run printed four metrics and
+looked complete. `ladder_readout.py` now asserts every requested metric against
+the data and prints a `!! METRICS not present` line, so a typo fails loudly.
 
 Deliberately not done: raising n to chase L2. That is new GPU scope and is dpf's
 call, not mine. The number that would justify it is now measurable rather than

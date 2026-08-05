@@ -204,8 +204,24 @@ def main():
     print("=" * 100)
     print("BEHAVIOURAL, INTERSECTION-PAIRED (denominator printed; never assumed 100)")
     print("=" * 100)
-    METRICS = ["verified_after_edit", "ran_any_test", "n_think_calls",
-               "finish_claims_success", "n_actions"]
+    # NOTE: an earlier version of this list said "n_think_calls", which is not a
+    # key emitted by extract_traj_stats.py (the key is "n_think"). The metric
+    # loop skips absent keys silently, so S1's *registered primary outcome* was
+    # being dropped without a warning. Names are now asserted against the data
+    # below -- a typo here must fail loudly, not vanish.
+    METRICS = ["n_think", "n_turns_with_thought", "think_arg_chars_total",
+               "verified_after_edit", "ran_any_test", "n_test_runs",
+               "n_test_ok_runs", "n_edits", "empty_patch", "finished",
+               "finish_claims_success", "n_actions", "n_terminal",
+               "n_file_editor", "dup_action_frac"]
+    present = set()
+    for m in stats.values():
+        for row in m.values():
+            present |= set(row)
+    missing = [m for m in METRICS if m not in present]
+    if missing:
+        print(f"  !! METRICS not present in stats.jsonl (typo?): {missing}")
+        METRICS = [m for m in METRICS if m in present]
     for hi, lo, what in rungs[:4] + [("F", "B", "base vs arm, both nostub [LB]")]:
         sh_, sl_ = stats.get(hi, {}), stats.get(lo, {})
         inter = sorted(set(sh_) & set(sl_) & cov[hi]["have"] & cov[lo]["have"])
