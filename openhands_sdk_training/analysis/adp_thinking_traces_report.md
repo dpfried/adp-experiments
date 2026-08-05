@@ -27,6 +27,74 @@ The headline: **no model in this campaign ever generated a native reasoning trac
 looks like "thinking" in the trajectories is #3, an ordinary tool call. And #2 is a
 format difference between training and eval that is real but of unmeasured consequence.
 
+⚠️ **Third headline, added 2026-08-05: every base statistic in this report is computed over
+300 of base's 500 rollouts, not 500** — the harness discards the transcript of an instance
+that ends in error, and base ends in error on 200 (mostly by exhausting the 500-iteration
+cap). Read **§0b before quoting any base number.** It does not touch any training-side
+figure, any arm-vs-arm comparison, or the Lever-A refutation.
+
+---
+
+## 0b. ⚠️ Coverage defect: 200 of base's 500 rollouts carry no transcript
+
+Found 2026-08-05 while testing the narration hypothesis (§3.4f). This is a property of the
+existing eval artifacts, not of anything built here, and it affects numbers already
+published in this report and in the prereg.
+
+**What happens.** Every model ran with `max_iterations: 500` — identical, read from each
+rollout's own `metadata`. When an instance terminates in error after the harness's retries,
+the record is written with `history: []` and `metrics: null`; the transcript and the token
+accounting are gone. The instance is still **graded normally**, because the prediction is
+the workspace diff (`test_result.git_patch`), which survives independently of the
+conversation record. So these instances score, but cannot be measured.
+
+| model | n | blank | of which cap-hit | resolved | from blank | from kept | resolve-rate\|kept | completion tok (kept) | tok/inst |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| **base** | 500 | **200** | **131** | 119 | **26** | 93 | 31.0% | 16,402,192 | **54,673** |
+| swezero | 500 | 0 | 0 | 77 | 0 | 77 | 15.4% | 5,406,525 | 10,813 |
+| rebench | 500 | 5 | 1 | 70 | 0 | 70 | 14.1% | 19,736,006 | 39,870 |
+| coderforge | 500 | 3 | 0 | 48 | 0 | 48 | 9.7% | 15,499,780 | 31,186 |
+| scale | 500 | 1 | 1 | 35 | 0 | 35 | 7.0% | 14,555,603 | 29,169 |
+| v3_tokmatch | 500 | 0 | 0 | 63 | 0 | 63 | 12.6% | 5,135,969 | 10,271 |
+| v3_maxpool | 500 | 0 | 0 | 62 | 0 | 62 | 12.4% | 4,866,882 | 9,733 |
+
+Error taxonomy over base's 200 blanks: `MaxIterationsReached` **131**, `OSError` 20,
+"Instance did not complete" 16, other conversation-run failures 33. A representative record
+(`sympy__sympy-14531`): `history: []`, `metrics: null`,
+`error: "Instance failed after 3 retries. Last error: … MaxIterationsReached: Agent reached
+maximum iterations limit (500)"` — and a **6,309-character graded patch**. It resolves.
+
+**Four consequences, in descending order of how much they should change your reading.**
+
+1. **Test-time compute was never controlled, and base uses the most of it.** Recorded
+   completion tokens per transcript-bearing instance: base **54.7k**, rebench 39.9k,
+   coderforge 31.2k, scale 29.2k, swezero **10.8k**, v3 arms ~10k. And base's 16.4M
+   *excludes the 200 capped runs entirely*, so its true spend is materially higher than any
+   number here. Resolves per million recorded completion tokens: swezero **14.2**,
+   v3_maxpool 12.7, v3_tokmatch 12.3, base **≤7.3** (5.7 counting only kept-run resolves),
+   rebench 3.5, coderforge 3.1, scale 2.4. **The best arm is ~2× more token-efficient than
+   base.** "base ≫ arms" is a statement about a fixed *iteration* budget, not a fixed
+   compute budget; under a token budget the ranking is different. This does not make the gap
+   go away — it reframes what the gap is.
+2. **All base behavioural statistics are over a biased 60% subsample.** The 19.5% `think`
+   share, the 16.2% narration share, 13.4 `think` calls/instance, 85,726 action events, and
+   every action-depth median are computed over the **300** transcript-bearing runs, and the
+   200 excluded are systematically the **longest** ones. Arm figures are essentially
+   unaffected (0–5 blanks). Every base-vs-arm comparison in this report therefore compares a
+   truncated-at-the-top base sample against complete arm samples.
+3. **26 of base's 119 resolves (21.8%) have no transcript at all** and cannot be attributed
+   to any measured behaviour. No arm has a single such resolve.
+4. **The depth gap is larger than reported, and base is the only model the cap binds on.**
+   Kept-run action counts, p50: base **216**, rebench 203, scale 200, coderforge 190,
+   swezero 62, v3_tokmatch 53, v3_maxpool 50 — *before* counting the 40% of base runs that
+   ran past the cap. Two things are true at once: the cap is a shared, fair budget, and base
+   is the only model that exhausts it, so base's 119 is measured **with a truncation
+   handicap** and would plausibly be higher under a larger cap.
+
+**What it does not touch.** No training-side measurement (those read the tokenized caches).
+No arm-vs-arm comparison, including the Lever-A refutation — swezero, v3_tokmatch and
+v3_maxpool have **zero** blanks between them.
+
 ---
 
 ## 1. Native chain-of-thought: off in training, off in eval
@@ -526,7 +594,8 @@ django__django-15572   [with a terminal call]
 It is running commentary: interpret the last observation, state the next step. Short — median
 **93 characters**.
 
-**It is essentially unique to base.** Counting every `ActionEvent` in all 3,500 rollouts:
+**It is essentially unique to base.** Counting every `ActionEvent` in all 3,500 rollouts
+(base's row is over its 300 transcript-bearing runs — §0b; every other row is over ~500):
 
 | model | ActionEvents | with prose | % | prose tokens | median chars |
 | --- | --- | --- | --- | --- | --- |
@@ -584,6 +653,98 @@ the prose-share-vs-score correlation is the same weak base-driven +0.61 / +0.37 
 of *what SFT on ADP data does to the policy* — it removes the natural-language channel entirely
 — not as a lever.
 
+### 3.4f Is base's narration load-bearing CoT? — evidence, and how to block it
+
+Asked by dpf: *could the 16.2% narration channel be effectively a CoT that is helping the
+base model, and can we block it at inference time to see if performance degrades?*
+
+**Mechanically it is CoT by construction.** The narration and the tool call are one
+completion: the model emits the prose first, then `<tool_call>`. Every action token is
+therefore conditioned on the narration, which is exactly what "chain of thought" means. The
+open question is not whether the action is conditioned on it — it is — but whether that
+conditioning does any *work*.
+
+**Correlational evidence, within base's 300 transcript-bearing runs (§0b).** Narration rate
+= fraction of a run's `ActionEvent`s carrying non-empty event-level `thought`. Resolve rate
+rises monotonically across quartiles, and — the confound worth killing first — it is **not a
+run-length artifact**: it holds inside both short and long runs.
+
+| stratum (median split: 246 actions, 0.475 narration rate) | n | mean rate | med actions | resolved | rate |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| short runs / low narration | 82 | 0.364 | 138 | 13 | **15.9%** |
+| short runs / high narration | 68 | 0.584 | 124 | 25 | **36.8%** |
+| long runs / low narration | 68 | 0.409 | 428 | 20 | **29.4%** |
+| long runs / high narration | 82 | 0.557 | 367 | 35 | **42.7%** |
+
+| quartile by narration rate | n | mean rate | med actions | resolved | rate |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Q1 least | 75 | 0.324 | 191 | 17 | 22.7% |
+| Q2 | 75 | 0.444 | 281 | 16 | 21.3% |
+| Q3 | 75 | 0.514 | 292 | 23 | 30.7% |
+| Q4 most | 75 | 0.624 | 201 | 37 | **49.3%** |
+
+**This is not evidence of a causal effect** and should not be quoted as one. The obvious
+reverse story fits every number equally well: a model that has localised the bug has
+something to say and says it, so narration is a *symptom* of a run going well rather than a
+cause. Instance difficulty is uncontrolled. And the whole table lives inside the biased 300
+(§0b), which excludes base's longest runs. Its actual value is narrow but real: it rules out
+"narration just tracks run length", and it establishes that the sign is **positive**, so a
+blocking experiment has something to detect.
+
+#### The blocking experiment — built and validated offline, not launched
+
+**Method: prefill `<tool_call>\n` into the assistant generation prompt.** Then generation
+begins *inside* an open tool call and the model physically cannot emit prose first.
+
+Both halves are verified on disk, without GPUs:
+
+* **Template.** `/checkpoint/dpf/swebench-eval/prompts_adp/prefill_toolcall.jinja` — a
+  one-line delta from the stock Qwen3.5 template (same shape as main-worker's `nostub.jinja`,
+  so it composes with the parity ladder). Rendering check: output is byte-identical to the
+  stock prompt plus exactly `<tool_call>\n`, i.e. **+2 tokens** `[248058, 198]`.
+* **Parser.** vLLM 0.25.1's `qwen3_coder` parser resolves to `Qwen3EngineToolParser`, whose
+  state machine (`vllm/parser/qwen3.py`) carries an explicit
+  `# Fallback: <function= without a preceding <tool_call>` transition
+  `(CONTENT, FUNC_PREFIX) → TOOL_NAME`. Fed a completion that *starts* at `<function=` — what
+  the model will produce once `<tool_call>\n` is prefilled — it returns a clean tool call
+  with `content=None`. Fed the narrated form, it returns `content='Now let me look at the
+  files.'`. **That `content` field is precisely the 16.2% channel**, so the intervention
+  removes exactly the thing measured in §3.4e and nothing else.
+
+**What it isolates.** It blocks prose *before* the tool call. It does **not** touch the
+`think` tool, which is itself a tool call and still fires normally — so this cleanly
+separates the 16.2% narration channel from the 19.5% `think` channel. It also does not block
+prose emitted *after* `</tool_call>`; §3.4e shows base essentially never does that, but the
+blocked run should be re-measured rather than assumed.
+
+**Matched control already scheduled.** Cell **E** of main-worker's `run_parity_ladder.sbatch`
+(base, stock template, harness `default.j2`, select shards `00`/`01`, n=100) is the exact
+comparator. The blocking cell is the identical invocation with
+`CHAT_TEMPLATE=$P/prefill_toolcall.jinja` — one flag, one axis, same instance IDs. Cost: 2
+jobs × 1 A100. Running it *after* E lands is strictly better than running it standalone
+against the 500-instance board, which uses different IDs.
+
+**Second, cheaper axis, needing no template at all:** drop `think` from the offered tool
+list, which removes the other 19.5%. The two together give a 2×2 of
+{narration on/off} × {think on/off} whose control cell already exists.
+
+**Pre-registered readings.** If blocking narration costs base a material share of its resolve
+rate, the natural-language channel is load-bearing, and the arms' ~0% narration (§3.4e) is a
+genuine deficit rather than a stylistic one — that would be the first mechanism in this
+campaign to survive contact with an intervention. If it costs nothing, the 16.2% is
+decorative and the base ≫ arms gap is elsewhere.
+
+**Known risks, to be reported as secondary outcomes rather than discovered afterwards.**
+(a) Forcing a tool call every turn is itself a distribution shift, so a drop is not
+automatically evidence that the *reasoning* mattered. (b) The model may **relocate** the
+narration into the `think` tool or into a parameter string — directly measurable, and the
+first thing to check. (c) Base already hits the 500-iteration cap on 40% of instances (§0b);
+changing tokens-per-iteration perturbs that, so **cap-hit rate must be reported alongside
+resolve rate** or the two effects are confounded.
+
+**Status: not launched.** The parity-ladder arrays are pending on the same GPUs, and the
+matched control is inside them.
+
 ### 3.4d Method notes and caveats — read before quoting these numbers
 
 * **Sampling.** Training shares are from ~790 records per subset (~1.4% of 55k), contiguous
@@ -603,6 +764,10 @@ of *what SFT on ADP data does to the policy* — it removes the natural-language
   is false (it is the single largest category). Match `<function` (`[27, 1628]`) and decode
   the name. The `think` figures were never affected: they used the exact full sequence
   `<function=think>`.
+* ⚠️ **"3,500 rollouts" means 3,500 records, of which 3,291 carry a transcript.** The 209
+  blanks are 200 base + 9 spread over rebench/coderforge/scale (§0b). Wherever this report
+  says base's numbers are over 500 rollouts, the transcript-derived ones are over **300**,
+  and the excluded 200 are base's longest runs. Arm figures are unaffected.
 * **Base's 19.5% is a lower bound, and the bias is inert.** If base's 833 malformed `think`
   calls sit in the 13–19% of `usage` that reconstruction does not recover, the omission pushes
   base's think share *up*. Base is already the maximum, is excluded from the arms-only
@@ -697,3 +862,14 @@ Measured from: `src/llamafactory/data/template.py` (:407, :2151, :2167) in
 `/checkpoint/dpf/swebench-eval/{runs,logs}`; and all rollout `output.jsonl` for the 7 scored
 models. Scripts: `$CLAUDE_JOB_DIR/tmp/v3/{think_eval,think_train2,think_mech,think_fail,report_evidence,train_verbatim}.py`.
 Companion: `adp_v3_a1_preregistration.md` §19.
+
+§0b and §3.4f additionally read the **graded** artifacts, which are the source of truth for
+what was scored and are *not* the same files as `out_*/combined/output.jsonl`:
+`runs/score_<tag>/shard_*of16.jsonl` (rollouts as graded) and `shard_*of16.swebench.jsonl`
+(the predictions themselves), plus `merged.report.json`. The defect surfaced as a
+contradiction between them — 26 instances in base's `resolved_ids` had a zero-length patch
+and zero actions in the combined file, while their graded prediction was a 6kB diff. Scripts:
+`{hist_cov,attempts,resolved_x_hist,shard_probe,errrec,cap_audit,cap_cfg,narr_strat,
+parser_prefill,mk_prefill}.py` in the same directory. The blocking template is
+`/checkpoint/dpf/swebench-eval/prompts_adp/prefill_toolcall.jinja` (validated, unreferenced
+by any submitted job).
