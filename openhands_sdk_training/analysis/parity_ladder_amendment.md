@@ -771,6 +771,68 @@ another explanation. Recording the threshold now: **more than 5 of E's final
 ~100 records emitting a native `<think>` block** falsifies it. (5 is the stock
 baseline already on record for base from the earlier 324-record board run.)
 
+**Falsifier check at E = 52 records (2026-08-05): not falsified. 0 of 52.** Still
+survivorship-limited; E is on attempt 1 at 9h40m of a 16h limit.
+
+### 7b. What F's "native think" actually is — a correction to my own claim
+
+Re-measured on all 21,763 of F's assistant messages while running the behavioural
+pass, because a sampled record looked wrong. It was: the tag-level number holds,
+the mechanism story I attached to it does not.
+
+| F (base, nostub), all assistant messages | value |
+|---|---|
+| messages containing a literal `<think>` | **21763 / 21763** |
+| `<think>` at character 0 of the message | **21763 / 21763** |
+| messages ever emitting a closing `</think>` | **0** |
+| chars between `<think>` and the first markdown header, p50 / p90 / p99 / max | **56 / 237 / 1112 / 6167** |
+| messages with >200 such chars | **12.1%** |
+| whole remainder after the tag, p50 | **68 chars** |
+
+Per-cell tag counts (record level): A 0/100, B 0/100, C 0/100, D 0/100,
+E **0/52**, F **100/100**.
+
+So "F emits native `<think>` in 100/100 instances" is **true and the E-vs-F
+contrast is real** — E emits the tag zero times, F every time, and that is
+squarely attributable to the stub. But the reading I hung on it, that removing
+the stub *restored base's reasoning channel*, overstates what is there. What
+removing the stub restores is an **unclosed `<think>` opener with a median of one
+sentence behind it** (56 chars; F's whole message is a median 68 chars), which
+then runs straight into the same `## Phase N` prose E produces without any tag.
+Only 12% carry more than 200 characters. Nothing ever closes the block.
+
+**What this does and does not change.** The *score* comparison is untouched — F's
+27/29 comes from resolved patches, not from this. The cap-hit collapse (E 35.4% →
+F 0.0% at attempt 1) is untouched, and remains the substantive finding. What is
+weakened is the causal narrative "the stub gags a reasoning channel base would
+otherwise use productively": on this evidence the channel base opens is thin and
+malformed, so the cap-hit collapse more likely comes from the *template edit
+changing the whole generation distribution* than from reasoning content base was
+being denied. Restating the falsified premise precisely: `think_stub_prereg.md`
+§2's "base is stub-native" prediction still fails — removing the stub helped base
+rather than hurting it — but "and it helped because base reasons natively" is my
+addition and is not supported. Downgraded to: **removing the stub changes base's
+output distribution substantially and in base's favour, by a mechanism not yet
+identified.**
+
+### 7c. Two analysis-code defects found by the same check
+
+Both are silent-zero shapes, the same family as the harness defects above.
+
+1. **`extract_traj_stats.py`'s `n_native_think` and `n_reason_content` are
+   uniformly 0 for every cell, F included.** They read `thinking_blocks` /
+   `reasoning_content`, which this harness never populates — the content lands in
+   `thought` as a literal string. Any conclusion drawn from those two fields
+   reads as "no cell reasons natively," which is wrong for F and indistinguishable
+   from a true zero. `n_any_reason` is non-zero only because it also ORs in the
+   `think` *tool*.
+2. **The extractor's own comment is wrong about who calls the think tool.** It
+   asserts base "never calls the think tool; the SFT arm is the exact mirror."
+   Measured: the think tool is called in E 52/52, F 100/100, A 98/100, B 98/100,
+   C 97/100, D 97/100. **Every cell calls it in ~all instances.** The comment
+   justifies counting the channels separately, which is still right, but the
+   stated base-vs-arm mirror does not exist and should not be cited.
+
 ### 6b. The two findings this failure actually delivers — and the asterisk it costs
 
 Added after devils-advocate's review argued I had under-sold the L3 failure.
