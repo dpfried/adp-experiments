@@ -914,3 +914,90 @@ stronger, not weaker. Re-explaining a failed placebo in a way that softens my
 own headline anchor while strengthening the conclusion I already hold is the
 opposite of the shape motivated reasoning takes — but the asterisk is owed
 regardless of which way it cuts.
+
+## Addendum 8 — the scoring harness returns batch-dependent verdicts on identical patches
+
+Found by the validity gate registered in 7a, which I had expected to pass
+trivially. It failed, and the failure is not the one I was guarding against.
+
+### What the gate found
+
+The gate's premise was an identity: aggregate and attempt-1 scoring can only
+differ on instances that were actually retried, because on a non-retried instance
+both score the same rollout. Movement in the totals obeyed it. The *identity of
+the resolved instances* did not:
+
+| cell | agg | a1 | \|move\| | retried | instances disagreeing on a NEVER-retried rollout |
+|---|---|---|---|---|---|
+| A | 7/100 | 8/100 | 1 | 5 | **9** |
+| B | 8/100 | 6/100 | 2 | 3 | **8** |
+| C | 7/100 | 10/100 | 3 | 4 | **9** |
+| D | 11/100 | 9/100 | 2 | 2 | **4** |
+
+Registered tolerance was 2, on the grounds that a couple of genuinely flaky tests
+are expected. 4–9 is not that.
+
+### Ruling out the innocent explanations
+
+**Not different patches.** For every non-retried instance in every cell, the
+`git_patch` in `output.jsonl` and in `output.critic_attempt_1.jsonl` is
+**byte-identical** — 0 differences out of 95/97/96/98/29 instances for A/B/C/D/F.
+So the two runs scored the same bytes.
+
+**Not random flakiness, and not the sandbox collision I was worried about.** Of
+the 19 distinct instances that flip, **9 flip in more than one cell, and 8 of
+those 9 flip in the same direction in every cell that flips them** — across
+different models producing different patches:
+
+| instance | cells | direction |
+|---|---|---|
+| `django__django-13363` | A, B, C | lost in all three |
+| `django__django-13820` | A, B, C | gained in all three |
+| `django__django-16527` | A, B | lost in both |
+| `django__django-16255` | A, C | lost in both |
+| `pytest-dev__pytest-7205` | A, C | gained in both |
+| `django__django-16801` | B, D | lost in both |
+| `scikit-learn__scikit-learn-10908` | B, D | gained in both |
+| `django__django-12050` | C, D | lost in both |
+| `scikit-learn__scikit-learn-13439` | C, D | **gained / lost** (the lone exception) |
+
+Random contention does not pick the same instance in three independent cells and
+push it the same way. This is an **instance-level property of the scoring
+environment as built in a given batch**, and it is roughly balanced in sign
+(gains ≈ losses), which also argues against collision-induced sandbox deletion —
+that would produce excess *unresolved*.
+
+### What this costs, and what it does not
+
+**Cross-batch score comparisons carry it; within-batch cell differences largely
+cancel it.** If `django-13363` fails to resolve for every cell in a batch, it
+subtracts from both sides of any difference computed inside that batch.
+
+That distinction is decisive for which number to quote, and it does not favour the
+one I have been treating as the reference. Merge times: the arm aggregates landed
+06:48–07:28, **F's aggregate landed 09:29 and 11:09** — a different, later batch.
+The a1 scorings for A, B, C, D and F were submitted together and merged
+14:41–14:51 — **one batch**.
+
+- The aggregated **F−B = +19 is exposed to this effect**, because F and B were
+  scored in different batches. On top of the compute confound in Addendum 7.
+- The matched **F−B from the a1 batch is both compute-matched and batch-matched**,
+  and is therefore the better instrument on two independent grounds. I did not
+  anticipate the second one.
+
+**Residual error that does not cancel.** 10 of the 19 flips occur in a single cell
+only (~2.5 per cell). Those are the shape cross-cell sandbox collision would
+produce — a collision hits whichever cell was verifying that instance at that
+moment, not all of them. So the a1 numbers carry roughly **±2–3 per cell of
+non-cancelling error**, and matched rungs smaller than that are not resolvable by
+this batch.
+
+**A statement I must therefore not make:** "F fell from 27 to X at matched
+compute." That subtraction crosses two batches and mixes the compute effect with
+this one. The defensible comparisons are cell-vs-cell *within* the a1 batch, and
+cell-vs-cell within the aggregate batch, each quoted separately.
+
+**Consequence for a memory claim.** The recorded run-noise calibration (14/100
+instances flipping between nominally identical runs) was attributed to *rollout*
+noise. Part of it is this instead: scoring noise on identical patches. The ±7/100
+detection floor stands as a floor; its attribution was wrong.
