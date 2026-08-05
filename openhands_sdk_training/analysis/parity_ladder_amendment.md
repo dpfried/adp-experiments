@@ -359,3 +359,114 @@ rather than carrying cluster paths.
 (S1 = B−A, C−B, D−C, and L1 = C−A) is fully collected. Base cells still running,
 consistent with their cap-hitting long rollouts: F at 46/50 and 50/50, E at
 7/50 and 4/50.
+
+## Addendum 5 — a defect in the *harness's* multi-attempt aggregator, found while checking F's duplicate rows
+
+Addendum 4's defects were mine. This one is in the benchmark harness, it is
+still live, and it is **asymmetric between base and arm** in exactly the
+direction that matters for the pre-registered base-vs-arm comparison. Found
+2026-08-05 while chasing why `F__s00` held 87 rows for a 50-instance shard.
+
+### What the rows meant
+
+`out_par_F_base_nostub_evalp__s00` sat at 87 rows / 50 unique ids mid-flight,
+while the *completed* `F__s01` had exactly 50 rows despite 35 attempt-2 retries.
+So `output.jsonl` is not append-per-attempt: the harness rewrites it from all
+attempt files at the end of the run (`aggregate_results`). The 87 rows were a
+transient state. My dedup guard therefore never fires on a cleanly-finished
+shard — it only matters if a job dies mid-consolidation.
+
+Chasing which attempt survives consolidation is what surfaced the defect.
+
+### The defect
+
+`benchmarks/benchmarks/utils/iterative.py`:
+
+* `aggregate_results()` iterates attempts **last → first**, replacing the
+  incumbent only when `entry.beats(current)`.
+* `_AggregatedEntry.beats()` is `return self.rank > other.rank` — strict.
+* `_get_output_rank()` returns **0** = error, **1** = no-error/critic-failed,
+  **2** = critic-passed.
+
+An **empty patch** and a **substantive-but-critic-failing patch** are both
+rank 1. Equal ranks therefore resolve in favour of whichever was seen first,
+which — given the last→first iteration — is the **latest** attempt. The rank
+function never looks at whether a patch exists. Retries also bump temperature
+from 0.0 to 0.1, so a later attempt is a fresh non-greedy sample.
+
+Net effect: **a degenerate final retry silently discards a good earlier patch.**
+
+Note an empty final also implies no attempt ever reached rank 2 (a rank-2 entry
+wins regardless of order), so every candidate in these cases is rank-1 and the
+choice among them is precisely the tie the harness breaks arbitrarily.
+
+Concretely, `django__django-12325` in `F__s01`: attempt 1 produced a 1868-byte
+patch, attempt 2 produced 5806 bytes, and the record that got **scored** has a
+patch of **0 bytes**.
+
+### Why it is asymmetric — measured, not argued
+
+| run | final records | empty patch | discarded a non-empty attempt |
+|---|---|---|---|
+| all 8 arm ladder cells (A/B/C/D × 2 shards) | 400 | **0** | **0** |
+| base ladder cell F, shard 01 | 50 | 12 | **9** |
+| θ₀ multi-attempt run `v2_init_4b`, 10 shards | 300 | 62 | 26 |
+| arm board run `v2_swezero_4b`, 10 shards | 500 | **0** | **0** |
+
+The exposure is behavioural, not configurational: all cells ran the same
+protocol, but the base model fails the critic on ~70% of instances and so gets
+retried constantly, while the arm retries 2–3 times per 50 and never lands on an
+empty final. The defect can only bite a model that retries.
+
+### Two things this does **not** change
+
+1. **The arm ladder is untouched.** 0/400 affected, so A/B/C/D = 7/8/7/11 and
+   every arm rung (S1, C−B, D−C, L1) stands exactly as reported in the readout.
+2. **The θ₀ = 119/500 anchor is immune.** That number comes from
+   `v2_init_singlerun_4b`, which has **zero** `critic_attempt` files — a
+   single-attempt run cannot hit a multi-attempt tie-break. The affected
+   `v2_init_4b` (145/500) is the separate retry-boosted protocol. I initially
+   mis-stated this as a threat to the headline anchor; it is not.
+
+### What it does change: cell F, and only because F has no error rows
+
+In `v2_init_4b` the damage was largely self-cancelling by accident: the scoring
+sbatch concatenates `output_errors.jsonl` with `output.jsonl`, and **24 of those
+26** instances also appear in the error file carrying a non-empty patch, so they
+were already scored on a real patch (at the cost of being scored twice).
+
+`F__s01` has **zero error rows**, so **none** of its 9 are rescued. Nine of
+fifty instances — 18% of the shard — will be scored on an empty patch despite
+having produced patches of up to 12.8 KB. Every effect in this ladder is ≤4/100.
+A bias of this size sits an order of magnitude above the signal it would
+contaminate, and it points one way: it deflates base.
+
+### Repair, and why it keeps parity
+
+Minimal change to the tie-break only, leaving the rank ordering alone: *among an
+instance's rank-1 attempts, prefer a non-empty patch, then the latest such
+attempt.* Implemented in `analysis/repair_aggregate.py`, which emits only the
+records whose selection actually changes, into an isolated directory (the
+scoring sbatch pulls `output_errors.jsonl` from the input's own directory, so an
+isolated dir scores exactly those rows).
+
+Applied uniformly to all six cells. On the arm cells it is a **provable no-op**
+(0/400 affected), so parity is preserved by construction rather than by
+assumption — this is not a correction applied to base and withheld from arm.
+
+**Both numbers get reported.** The original scoring of `F__s01` was left running
+to completion rather than cancelled, so the readout will carry the as-harness
+score (what the standard harness reports) alongside the repaired score (the
+better estimate of what the model actually produced), clearly labelled. Swapping
+one for the other silently is exactly the move this document exists to forbid.
+
+Scoring of the repaired records was submitted with `--dependency=afterany` on
+the original job: the scoring sbatch prunes Apptainer sandboxes keyed by
+`instance_id` alone, so two concurrent jobs scoring the same instance would
+delete each other's sandbox.
+
+**This is the fifth silent-degradation defect in this pipeline in one day** —
+partial-output scoring, a missing merge step, the `n_think_calls` typo, an
+over-broad composite flag, and now a patch-blind tie-break in the harness
+itself. None of the five raised an error. All five would have shipped a
+confident wrong number.
