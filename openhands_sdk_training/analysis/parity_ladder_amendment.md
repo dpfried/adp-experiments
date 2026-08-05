@@ -180,3 +180,77 @@ Note this cuts against a reading of the existing board: base's 119/500 is
 achieved while 40% of its instances never finish. Whether that makes base's
 score an under- or over-statement is not something this probe measures, and I
 am not claiming it does.
+
+## Addendum 2 — reasoning-channel accounting and the F−B differential
+
+Filed 04:00 UTC, still pre-rollout. Raised by devils-advocate reviewing the
+three prereg docs.
+
+### The objection
+
+S1 reads the stub's effect on the arm's `think`-**tool** rate (B vs A). In cell
+A the stub pre-closes an empty `<think></think>`, so the tool is the only
+reasoning channel available. In cell B the assistant prefix is bare
+`<|im_start|>assistant\n`, which in principle permits a **native** `<think>…</think>`
+block. If nostub unlocks native blocks, a rise in tool rate at B could be
+reasoning *relocating between channels* (a format shift) rather than
+*un-suppressing* (a rate change) — identical S1 signature, different meaning.
+
+### Resolved for the arm, live for base — measured, not assumed
+
+Scanned assistant-generated content in the existing board runs, both served
+with the **stock** (stub) template:
+
+| | records with a native `<think>` block | total blocks |
+|---|---|---|
+| arm `v2_swezero_4b` | **0 / 500** | 0 |
+| base `v2_init_4b` | **5 / 324 (1.5%)** | 5 |
+
+The arm never emits a native block, consistent with 0 `<think>` occurrences in
+6,508,136 training tokens. Base does, at a low rate, *despite* the stub already
+being closed — so base retains the capability and the stub does not fully
+suppress it.
+
+Consequences:
+
+1. **S1 (B−A) stands as written.** For the arm the relocation channel is
+   empirically absent at n=500 under stock. It is still measured in B/C/D
+   rather than assumed, because nostub changes the prefix and could in
+   principle unlock what stock did not.
+2. **Base cells require combined-channel accounting.** Any E/F reasoning
+   comparison is reported as **native-block tokens + `think`-tool tokens**, and
+   the two components are also reported separately so a pure relocation is
+   visible as a compositional shift at constant total.
+3. **Native-`<think>` rate becomes a registered secondary outcome for all six
+   cells.** If it is non-zero in B/C/D, S1 is re-scored on the combined channel
+   before being read.
+
+### F vs B — the matched base-vs-arm differential
+
+devils-advocate correctly notes that the base-vs-arm tool-profile question
+(base 45.8% `terminal` / 16.2% message content vs arms' `file_editor`
+dominance, previously n=1) is answered not by E/F but by **F vs B**: base-nostub
+vs arm-nostub, same harness, same template, same shards, differing only in
+model. This is already in the ladder and is now named as an explicit readout.
+
+**Registered as a directional lower bound, not a point estimate.** The cap
+asymmetry is ~40% (base) vs ~0% (arm), and base's dropped instances are its
+longest by construction, so F and B cannot be intersected across models. Base's
+terminal-heavy profile is therefore measured on its shorter-finishing runs, and
+the true base-vs-arm terminal gap is if anything **larger** than F−B shows.
+Reported with that direction stated.
+
+### Noise band for E−F, and what L3 can and cannot do
+
+No same-condition replicate exists, so an empirical run-noise band cannot be
+pre-registered from data. Instead, registered procedure: because E and F are
+compared **on the intersection**, each instance yields a paired difference, so
+the standard error of the mean paired difference is computable directly from
+this run. **Rule: treat |mean paired Δ| < 2·SE as uninformative** and say so,
+rather than narrating a small tool-share move as a serving artifact.
+
+Recorded explicitly, per devils-advocate: L3's 8pp threshold is ≈1.6·SE at
+n=100, so it is deliberately insensitive — it will not false-alarm on decode
+noise, and correspondingly **cannot detect a real sub-8pp cap-hit effect**. L3
+is a plumbing guard, not a test of the stub's effect on budget, and must not be
+reported as the latter.
