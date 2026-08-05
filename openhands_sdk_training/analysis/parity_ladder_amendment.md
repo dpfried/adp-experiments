@@ -712,6 +712,31 @@ file at `runs/a1_<tag>__s{00,01}/output.jsonl` has **100 rows / 100 unique
 five cells cover an identical instance set** (symmetric difference 0 against A).
 The pairing is therefore real, not assumed.
 
+**A collision I permitted, and the validity check that catches it.** The a1 batch
+runs 20 tasks that all score the **same 100 instances** concurrently. The scoring
+sbatch prunes Apptainer sandboxes keyed by `instance_id` alone, so cross-cell
+concurrency is exactly the hazard `reagg_ladder.sh`'s guard was written to prevent
+— and that guard only covers *same-cell* jobs (`sc_$TAG`, `sc_${TAG}_reagg`), so
+nothing blocked it. Mostly this costs wall-clock (sandbox rebuilds), but a sandbox
+deleted mid-verify could produce a spurious *unresolved*, which would bias every
+cell downward and look like a real effect.
+
+Registered before the scores exist, as a cheap internal check: the arm cells
+barely retried, so **each arm's a1 score must land within ~1–2 of its aggregate**.
+
+| cell | aggregate | instances with an attempt 2 | a1 must be ≈ |
+|---|---|---|---|
+| A | 7/100 | 5 | 5–7 |
+| B | 8/100 | 3 | 6–8 |
+| C | 7/100 | 4 | 5–7 |
+| D | 11/100 | 2 | 9–11 |
+
+**If the arm a1 scores come in materially below those bands, the batch is
+corrupted by sandbox collision and every a1 number including F's must be
+discarded and re-run serially — not interpreted.** Only F's a1 is expected to
+differ substantially from its aggregate, because only F retried heavily. This
+check cannot be retrofitted: it is arithmetic on numbers that already exist.
+
 Registered readings, by band (SE from the observed discordant pairs):
 
 | matched F−B | what I will conclude |
