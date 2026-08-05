@@ -491,6 +491,99 @@ counterexample beside the observation so this cannot be mis-quoted as a lever.
 It remains **n=1 on the base side** — a hypothesis worth a targeted test, not a mechanism.
 *(Both points: devils-advocate, PR #7 review.)*
 
+### 3.4e What the 16.2% actually is — base's narration channel, and why no arm has one
+
+The 16.2% is the **event-level `thought` field on `ActionEvent`s**: natural-language prose the
+model emits *alongside* a tool call, in the same completion. It is a different field from
+`action.thought` (the `think` tool's argument, §3.4b) and from `reasoning_content` (native CoT,
+which is zero everywhere, §1.3). vLLM's parser splits one generated turn into leading content +
+the tool call; this is that leading content.
+
+**Verbatim, base** — the whole range, unedited:
+
+```
+django__django-11211   [with a think call]
+  "I'll help you implement the necessary changes to fix the issue with prefetching related
+   objects when using GFK for models that use UUID fields as primary keys. Let me start by
+   understanding the problem and exploring the repository.
+   ## Phase 1: READING - Understanding the Problem"
+
+sympy__sympy-13877     [with a terminal call]
+  "Now I can see the problem clearly. The issue is that sympy is returning `nan` for f(5),
+   and then when trying to compute f(6), it fails with `TypeError: Invalid NaN comparison`…
+   Now let me look at the code in `exprtools.py` to fix the issue."
+
+sphinx-doc__sphinx-8120 [with a terminal call]
+  "BINGO! There's the bug! Look at line 296 in application.py: …
+   So Sphinx's **embedded locale files come before the user's locale files**. When gettext
+   merges translations, it uses the FIRST translation as the primary…"
+
+django__django-15572   [with a terminal call]
+  "Interesting! The reproduce script passes. This means either: 1. The fix has already been
+   applied  2. The issue is in a specific scenario that's not being tested"
+```
+
+It is running commentary: interpret the last observation, state the next step. Short — median
+**93 characters**.
+
+**It is essentially unique to base.** Counting every `ActionEvent` in all 3,500 rollouts:
+
+| model | ActionEvents | with prose | % | prose tokens | median chars |
+| --- | --- | --- | --- | --- | --- |
+| **base** | 85,726 | **41,311** | **48.2%** | **2,164,355** | 93 |
+| scale | 122,092 | 491 | 0.4% | 61,858 | 148 |
+| v3_tokmatch | 36,257 | 5 | 0.0% | 1,491 | 451 |
+| rebench | 116,201 | 3 | 0.0% | 109 | 139 |
+| coderforge | 110,908 | 3 | 0.0% | 362 | 166 |
+| v3_maxpool | 36,811 | 2 | 0.0% | 74 | 354 |
+| **swezero** | 45,920 | **0** | **0.0%** | **0** | — |
+
+Not "rounds to zero" — swezero is **exactly zero across 45,920 action events**, and three of
+the other arms are in single digits. Base attaches prose to roughly **half** of everything it
+does, most heavily to shell commands (1,512,204 tokens over 29,007 `terminal` calls).
+
+*(Standalone assistant `MessageEvent`s are separate and **not** in the 16.2%: base 1,166 events
+/ 116,876 tokens; every arm 2–6 events except scale's 115. Including them moves base to ~17.1%.)*
+
+**Why the arms have no narration: the training data never supervises any.** Measuring the
+training analog — loss-bearing tokens between `<|im_start|>assistant\n` and that turn's first
+`<tool_call>` (n ≈ 390 records/subset):
+
+| subset | assistant turns | turns with prose | prose loss tokens | % of all supervision |
+| --- | --- | --- | --- | --- |
+| scale | 6,554 | 300 | 76,655 | 8.94% |
+| swezero | 5,353 | 160 | 32,000 | 4.27% |
+| coderforge | 5,304 | 169 | 33,489 | 3.49% |
+| rebench | 5,176 | 173 | 34,600 | 3.41% |
+| **v3_tokmatch** | 8,768 | **0** | **0** | **0.00%** |
+| **v3_maxpool** | 9,228 | **0** | **0** | **0.00%** |
+
+**And every sample inspected is a condensation summary, not narration** — `USER_CONTEXT:` /
+`TASK_TRACKING:` / `## Context-Aware State Summary`, e.g.:
+
+```
+"\n\n## Context-Aware State Summary\n\n**USER_CONTEXT:** Fix inverted distance calculation
+ logic in DeepDiff when using `ignore_order=True` with custom `iterable_compare_func`…"
+"\n\n```yaml\nUSER_CONTEXT: Fix thread-local request propagation issue in Pyramid's
+ Configurator with autocommit=True…"
+```
+
+So the ADP corpus supervises assistant prose **only** as periodic state summaries, and **never**
+as commentary attached to a tool call. The lesson SFT teaches is *emit a tool call and nothing
+else*, and the arms learn it near-perfectly. Two corroborations: the v3 arms, built by removing
+condensation records, measure **exactly 0.00%** — an independent check on that arm construction
+— and `scale`, with the most assistant prose in training (8.94%), is the only arm that emits any
+at eval (491 events).
+
+**What this does and does not mean.** Base devotes ~**35.7%** of its generated tokens to natural
+language (19.5% `think` + 16.2% narration); the most verbose arm reaches 15.9% and `scale` 0.5%.
+That is the widest base-vs-arms behavioural gap measured in this campaign. It is **not** shown to
+be causal: it is n=1 on the base side, base differs from the arms in every other way too, and
+the prose-share-vs-score correlation is the same weak base-driven +0.61 / +0.37 as `think`
+(§3.4c) because the ordering is nearly identical. Treat it as the sharpest available description
+of *what SFT on ADP data does to the policy* — it removes the natural-language channel entirely
+— not as a lever.
+
 ### 3.4d Method notes and caveats — read before quoting these numbers
 
 * **Sampling.** Training shares are from ~790 records per subset (~1.4% of 55k), contiguous
