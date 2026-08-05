@@ -703,6 +703,15 @@ base should if anything be the stronger of the two. Both of those push **up**.
 So "smaller than +19" is my expectation, not a boundary: **matched F−B landing at
 or above +19 is a legitimate outcome of this design, not a sign something broke.**
 
+**Input verification, run before any score existed** (so a broken input could not
+be discovered after the fact and rationalised). For each of A/B/C/D/F: the subset
+file at `runs/a1_<tag>__s{00,01}/output.jsonl` has **100 rows / 100 unique
+`instance_id`s**, its id set is **exactly equal** to that cell's original
+`output.critic_attempt_1.jsonl` id set, the scoring inputs
+(`score_<tag>__s*_a1/shard_*of2.jsonl`) carry the same 100 unique ids, and **all
+five cells cover an identical instance set** (symmetric difference 0 against A).
+The pairing is therefore real, not assumed.
+
 Registered readings, by band (SE from the observed discordant pairs):
 
 | matched F−B | what I will conclude |
