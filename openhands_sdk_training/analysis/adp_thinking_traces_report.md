@@ -95,6 +95,23 @@ maximum iterations limit (500)"` — and a **6,309-character graded patch**. It 
 No arm-vs-arm comparison, including the Lever-A refutation — swezero, v3_tokmatch and
 v3_maxpool have **zero** blanks between them.
 
+#### Scope limit, added same day: the cap-hit rate is a property of *that run*, not of base
+
+The parity ladder (`sdk_43376f1`, same `maxiter_500`) is re-running base on 100 of the same
+instances. Across **146** base rollouts under that newer harness — cell F complete (100/100)
+and cell E interim (46) — there are **0 blank records and 0 `MaxIterationsReached`**. At the
+board's 26% cap-hit rate ~38 were expected. Base's *depth* reproduces (cell E p50 **223**
+actions vs the board's 216), so this is not a behaviour change; the newer harness is simply
+not losing these runs.
+
+So consequence 4's "base is the only model the cap binds on, at ~40%" must be read as **a
+property of the specific run that produced the 119**, not a stable property of the model.
+Consequences 1–3 are unaffected, because they are statements about *those* artifacts: the
+board's base row really is 300 transcripts, 26 of its resolves really are unattributable, and
+the token spend behind the 119 really was never controlled. But do not carry the 40% forward
+as a prediction — and note that whatever caused it (the 20 `OSError`s and 33 retry failures
+sit next to the 131 cap-hits) may have inflated the cap-hits too.
+
 ---
 
 ## 1. Native chain-of-thought: off in training, off in eval
