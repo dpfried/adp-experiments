@@ -397,9 +397,10 @@ tokenizer. Two denominators, because neither alone is airtight:
 
 **Lead with the effect sizes, not the rank test.** Think-heavy sources produce think-heavy
 models (22.3 → 15.9, 20.5 → 12.9) and think-light sources produce think-light models
-(8.5 → 3.7); `scale`'s 0 → 0 is exact. The gap between the top and bottom non-zero arm is
-**4.3× in the data and 4.3× at eval**. That graded correspondence is what carries the
-conclusion.
+(8.5 → 3.7); `scale`'s 0 → 0 is exact. Top-to-bottom spread across the non-zero arms is
+**2.6× in the data (22.3 / 8.5) and 4.3× at eval (15.9 / 3.7)**. That graded correspondence
+is what carries the conclusion. (The spread being *wider* at eval than in the data is not
+interpreted here — see the denominator caveat below.)
 
 **The rank test is weaker than it looks, and should not be the headline.** Spearman = +1.00
 over the six arms is `p = 2/n! ≈ 0.003` only if the six are independent, and they are not:
