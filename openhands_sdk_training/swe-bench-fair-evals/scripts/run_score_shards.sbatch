@@ -39,23 +39,43 @@ cat "$OUTJSON" $([ -s "$ERRJSON" ] && echo "$ERRJSON") | awk -v i="$I" -v n="$N"
 echo "== shard has $(wc -l < "$SHARD") instances =="
 [ -s "$SHARD" ] || { echo "empty shard, nothing to do"; exit 0; }
 
+# --- PER-JOB sandbox root. This is a correctness fix, not tidiness ------------
+# Sandboxes used to be created under one SHARED root and pruned by instance_id
+# alone (`rm -rf $OH_SANDBOX_ROOT/$iid`). Every cell of a comparison scores the
+# SAME instance set, so two concurrent scoring jobs shared one sandbox directory
+# per instance and then deleted it out from under each other mid-run. The failure
+# is silent and one-directional: a vanished sandbox scores as UNRESOLVED.
+#
+# Measured, not theorised: cell B's attempt-1 subset scored 6/100 when 20 tasks
+# ran concurrently over the shared instance set, and 13/100 when the identical
+# bytes were re-scored alone -- 9 instances flipping, all toward resolved. That
+# ~7/100 is larger than every effect the parity ladder was built to detect, so
+# any concurrent scoring done before this fix is depressed by an unknown amount.
+#
+# Isolating by TAG and shard makes concurrent scoring of overlapping instance
+# sets safe. Sandboxes are one-shot, so nothing is lost by not sharing them.
+# (env.sh's ADP_WORKSPACE_LOCAL=1 also yields a per-job root, on node-local
+# scratch. Correctness must not depend on that being switched on.)
+SANDBOX_ROOT="$OH_SANDBOX_ROOT/job_${TAG}_${I}of${N}"
+mkdir -p "$SANDBOX_ROOT"
+echo "== sandbox root=$SANDBOX_ROOT =="
+
 cd "$BENCHMARKS_DIR"
 "$SB_VENV/bin/swebench-eval" "$SHARD" \
   --apptainer --dataset princeton-nlp/SWE-bench_Verified --split test \
   --run-id "score_${TAG}_${I}of${N}" \
   --timeout 1800 \
   --apptainer-score-dir "$SHARD_DIR/reports_${I}of${N}" \
-  --apptainer-sandbox-root "$OH_SANDBOX_ROOT" \
+  --apptainer-sandbox-root "$SANDBOX_ROOT" \
   --apptainer-cache "$APPTAINER_CACHEDIR"
 RC=$?
 echo "== score exit=$RC finished=$(date -Is) =="
 
-# sandboxes are one-shot; prune this shard's to reclaim ~3GB/instance
+# sandboxes are one-shot; prune this job's whole subtree (~3GB/instance).
+# Pruning the subtree rather than per-instance paths under a shared root is what
+# makes this safe to do while another job is still running.
 if [ $RC -eq 0 ]; then
-  while read -r line; do
-    iid=$(printf '%s' "$line" | "$SB_VENV/bin/python" -c 'import json,sys; print(json.load(sys.stdin)["instance_id"])' 2>/dev/null) || continue
-    rm -rf "$OH_SANDBOX_ROOT/$iid"
-  done < "$SHARD"
+  rm -rf "$SANDBOX_ROOT"
   echo "== pruned shard sandboxes =="
 fi
 exit $RC
