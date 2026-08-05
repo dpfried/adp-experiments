@@ -16,6 +16,11 @@ Three different things get called "thinking" here. Keeping them apart is the who
 | 2 | **The empty `<think>\n\n</think>` stub** — literal text from the chat template | **No** | **Yes, every turn** |
 | 3 | **The ADP `think` TOOL** — reasoning emitted as a tool call | **Yes, loss-bearing** | **Yes, live** |
 
+Second headline, added 2026-08-04: the `think` tool is not a curiosity — it carries
+**20–22%** of the SFT gradient for swezero and the v3 arms, and its training share predicts
+its eval share with **perfect rank fidelity (Spearman = +1.00, n = 6)** while predicting
+score not at all (§3.4b–§3.4c).
+
 The headline: **no model in this campaign ever generated a native reasoning trace.** What
 looks like "thinking" in the trajectories is #3, an ordinary tool call. And #2 is a
 format difference between training and eval that is real but of unmeasured consequence.
@@ -313,26 +318,32 @@ keeps both forms side by side (base, `django__django-15467`):
 ⇒ **the same token stream as any other tool call.** Nothing distinguishes it at generation
 time; only the tool name does.
 
-At training this text is **fully inside the loss**. Measured exactly by locating the token
+At training this text is **fully inside the loss**. Measured by locating the token
 subsequences for `<function=think>` (ids `[27, 1628, 28, 26003, 29]`) and `</function>`
 (`[510, 1628, 29]`) in `input_ids` and reading the label mask over the span — no char↔token
-mapping guesswork. First 600 records of shard 0 per subset:
+mapping guesswork. Sampled with **contiguous windows spread across every shard** of each
+tokenized cache (~790 records per subset; see §3.4d on why stride-sampling is wrong here):
 
-| subset | loss-bearing tokens | think spans | loss-bearing tokens inside `think` | **share of ALL supervision** |
-| --- | --- | --- | --- | --- |
-| **swezero** | 1,236,921 | 630 | 247,497 | **20.0%** |
-| coderforge | 1,486,600 | 541 | 197,798 | **13.3%** |
-| pooled220k / pooled55k | 1,403,565 | 403 | 156,135 | **11.1%** |
-| rebench | 1,588,800 | 322 | 127,146 | **8.0%** |
-| **scale** | 1,231,570 | **0** | **0** | **0.0%** |
+| subset | recs | loss-bearing tokens | think spans | loss tokens inside `think` | **share of ALL supervision** |
+| --- | --- | --- | --- | --- | --- |
+| **v3_tokmatch** | 782 | 2,361,217 | 1,316 | 527,286 | **22.3%** |
+| **v3_maxpool** | 780 | 2,400,856 | 1,294 | 516,459 | **21.5%** |
+| **swezero** | 782 | 1,557,501 | 795 | 319,338 | **20.5%** |
+| coderforge | 792 | 1,926,354 | 677 | 255,537 | **13.3%** |
+| pooled55k | 792 | 1,886,566 | 537 | 208,592 | **11.1%** |
+| pooled220k | 783 | 1,775,908 | 499 | 190,750 | **10.7%** |
+| rebench | 792 | 2,106,931 | 444 | 178,049 | **8.5%** |
+| **scale** | 798 | 1,684,767 | **0** | **0** | **0.0%** |
 
-(Stable across sample size: swezero measures 21.9% on the first 150 records, 20.0% on 600.
-v3_tokmatch, which inherits swezero, measures 22.4% on 150.)
+Two independent samples agree (first 600 records of shard 0 gave swezero 20.0%, coderforge
+13.3%, rebench 8.0%, scale 0.0%), and the pooled figures match the token-weighted prediction
+from the four sources (**10.5%** predicted, 10.7 / 11.1 measured) — a useful consistency check
+on the whole measurement.
 
-⇒ **Roughly a fifth of swezero's entire SFT gradient — and ~22% of the v3 arms' — teaches
-the model to write reasoning prose into a tool that does nothing.** The campaign *does*
-train on reasoning traces; they are simply packaged as tool calls rather than native CoT.
-`scale` is the sole exception: **0%** of its supervision is reasoning text, all of it actions.
+⇒ **Roughly a fifth of swezero's and the v3 arms' entire SFT gradient teaches the model to
+write reasoning prose into a tool that does nothing.** The campaign *does* train on reasoning
+traces; they are simply packaged as tool calls rather than native CoT. `scale` is the sole
+exception: **0%** reasoning text, all actions.
 
 **(ii) The tool's return value — `"Your thought has been logged."`. Produced by the
 SCAFFOLD. NOT supervised.**
@@ -347,6 +358,113 @@ So the model is supervised to *write* thoughts, never to *predict the acknowledg
 which is correct behaviour for an observation, and worth stating only because the two texts
 are easy to conflate.
 
+### 3.4c The eval-side analog: how much of what each model GENERATES is `think` prose
+
+Same question, other end of the pipe. For every `ActionEvent` in all 3,500 rollouts I
+reconstructed the qwen3_coder XML the model emitted (`<function=NAME>` + each
+`<parameter=…>` in generation order + `</function>`) and tokenized it with the same
+tokenizer. Two denominators, because neither alone is airtight:
+
+* **usage** — `metrics.accumulated_token_usage.completion_tokens`, vLLM's exact count of
+  every token generated. Includes output that never became an `ActionEvent` (malformed
+  calls, retries), so `think` share against it is a **lower bound**.
+* **recon** — the sum of everything reconstructed (all tool calls + message content).
+  Self-consistent with the numerator. Recovers 81–87% of `usage`; the gap is the
+  `<tool_call>` wrapper, whitespace, EOS, and discarded generations.
+
+| model | score | think calls | think tokens | completion tokens | recon tokens | **% of recon** | % of usage | think tok/inst |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| base | 119 | 6,676 | 2,594,002 | 16,402,192 | 13,320,103 | **19.5%** | 15.8% | 5,188 |
+| swezero | 77 | 1,330 | 590,220 | 5,406,525 | 4,588,391 | **12.9%** | 10.9% | 1,180 |
+| rebench | 70 | 1,435 | 635,114 | 19,736,006 | 17,193,976 | **3.7%** | 3.2% | 1,270 |
+| v3_tokmatch | 63 | 1,233 | 566,805 | 5,135,969 | 3,571,049 | **15.9%** | 11.0% | 1,134 |
+| v3_maxpool | 62 | 1,246 | 539,182 | 4,866,882 | 3,443,983 | **15.7%** | 11.1% | 1,078 |
+| coderforge | 48 | 1,820 | 717,836 | 15,499,780 | 13,316,313 | **5.4%** | 4.6% | 1,436 |
+| scale | 35 | 0 | 0 | 14,555,603 | 12,036,906 | **0.0%** | 0.0% | 0 |
+
+#### The result: behaviour transmits with perfect rank fidelity — and still does not predict score
+
+| model | **train** think-share | **eval** think-share | eval/train |
+| --- | --- | --- | --- |
+| v3_tokmatch | 22.3% | 15.9% | 0.71 |
+| v3_maxpool | 21.5% | 15.7% | 0.73 |
+| swezero | 20.5% | 12.9% | 0.63 |
+| coderforge | 13.3% | 5.4% | 0.41 |
+| rebench | 8.5% | 3.7% | 0.44 |
+| scale | 0.0% | 0.0% | — (0 → 0 exactly) |
+
+**Spearman(train share, eval share) = +1.00 over the six arms** — the ordering is preserved
+without a single inversion (p ≈ 0.003 under the exact permutation null). Every arm
+*under-expresses* relative to its data (eval/train ≈ 0.4–0.7), but the ranking survives
+intact, and `scale`'s 0 → 0 is exact.
+
+This is the first **positive control** in the campaign: it demonstrates the pipeline
+faithfully transmits a training-data behaviour into eval-time behaviour. So
+"the arms didn't learn the data" is **not** available as an explanation for the base ≫ arms
+gap. They learned it precisely. It just didn't help:
+
+* Spearman(score, eval think-share) = **+0.61** with base (n=7), **+0.37** without (n=6,
+  p ≈ 0.47, n.s.). As with the earlier per-instance count, **base drives it** — among arms
+  alone it is noise. Not a mechanism.
+* The two arms that generate the *most* reasoning prose (v3_tokmatch 15.9%, v3_maxpool 15.7%)
+  score **63 and 62** — worse than swezero at 12.9%, and far worse than base.
+
+Base is the striking row: never trained by us on any ADP data, it generates the **largest**
+share of `think` prose of any model (19.5%) and 5,188 think tokens per instance against
+~1,100–1,400 for every arm.
+
+#### Transmission is general, not a `think` artefact
+
+Same measurement over all tools. Training figures use the same contiguous cross-shard
+sampling (n ≈ 390/subset); eval figures are the reconstruction above (% of generated tokens):
+
+| model | train `file_editor` / `terminal` / `think` | eval `file_editor` / `terminal` / `think` |
+| --- | --- | --- |
+| coderforge | 60.3 / 12.5 / 13.2 | 67.5 / 25.7 / 5.4 |
+| rebench | 60.0 / 16.1 / 8.5 | 71.2 / 23.4 / 3.7 |
+| swezero | 46.9 / 13.7 / 21.0 | 62.0 / 21.1 / 12.9 |
+| scale | 59.2 / 24.9 / **0.0** | 58.7 / **40.7** / **0.0** |
+| v3_tokmatch | 52.1 / 14.1 / 22.8 | 57.7 / 21.0 / 15.9 |
+| v3_maxpool | 52.2 / 15.3 / 21.3 | 55.9 / 23.0 / 15.7 |
+| **base** | *(not trained by us)* | **16.6 / 45.8 / 19.5** (+ **16.2%** plain message content) |
+
+Rank fidelity by tool: `think` **+1.00**, `file_editor` +0.54, `terminal` +0.37 (all n=6).
+So transmission is real across the board and *strongest* for `think`.
+
+**The largest behavioural split in the table is not `think` at all — it is base vs everything
+else.** Base spends **45.8%** of its output driving the `terminal` and only **16.6%** on the
+structured `file_editor`; every arm inverts this (**56–71%** `file_editor`, 21–26% `terminal`).
+And base spends **16.2%** of its generated tokens on ordinary message content — talking — while
+every SFT arm rounds to **0.0%** (< 0.05%). SFT on ADP trajectories appears to eliminate the
+natural-language channel entirely and move the model from a shell-driven to an editor-driven
+workflow. This is **n=1 on the base side and unconfounded from nothing** — it is a hypothesis
+worth a targeted test, not a mechanism.
+
+### 3.4d Method notes and caveats — read before quoting these numbers
+
+* **Sampling.** Training shares are from ~790 records per subset (~1.4% of 55k), contiguous
+  windows spread across all shards. Not the full corpus.
+* **Stride-sampling is wrong here, and I hit it.** The pooled sets interleave the four
+  sources **round-robin** (`generate_arm_runs.py`: "the 4 arms' training records
+  (round-robin)"). A first attempt strided by `shard_rows // per` = 92 rows; 92 ≡ 0 (mod 4),
+  so every sampled record came from the **same source**, and pooled55k mis-measured as
+  **13.7%** instead of 11.1%. Contiguous windows fix it. Any future per-record sampling of
+  the pooled caches must avoid strides divisible by 4.
+* **Prefix identity is real, not a bug.** pooled55k is prefix-identical to pooled220k, and
+  v3_tokmatch to v3_maxpool (shard-0 row hashes at indices 0/599/1500 match exactly), because
+  each is a subsample of the other. That is why a shard-0-head sample returned byte-identical
+  figures for those pairs — the pairs genuinely share those records.
+* **Tool-name detection.** Matching the literal `<function=` token prefix silently **misses**
+  tools whose name merges with the `=` under BPE — it reported `file_editor` as absent, which
+  is false (it is the single largest category). Match `<function` (`[27, 1628]`) and decode
+  the name. The `think` figures were never affected: they used the exact full sequence
+  `<function=think>`.
+* **Eval reconstruction is approximate.** Parameter order is taken from the arguments JSON and
+  assumed to be generation order; the `<tool_call>` wrapper is excluded. This is why both
+  denominators are reported — the conclusions are identical under either.
+* **`think` counts must be structural.** Count `role == "function_call"` / `tool_call.name`;
+  the `<function=think>` XML is generated at tokenization, so grepping raw jsonl returns 0.
+
 ### 3.5 What the numbers do and don't support
 
 1. **`scale` 0 → 0 is an exact behavioural transfer.** The only subset with zero `think`
@@ -359,12 +477,23 @@ are easy to conflate.
    concentrates thinking (58% of instances, 13.4 calls each) while the arms sprinkle it
    (~98% of instances, ~2.5 calls each). This is the same signature as the lost verify loop
    documented in `adp_v3_a1_preregistration.md` §17: the behaviour is present in the data
-   but not reproduced at rate.
-3. **Spearman(score, think-calls/instance) = +0.57** across the 7 models — the first
+   but not reproduced at rate. **Refined by §3.4c:** the attenuation is uniform-ish
+   (eval/train ≈ 0.4–0.7 by token share) and the **rank ordering is preserved exactly**
+   (Spearman = +1.00, n = 6). So it is a level shift, not a failure to learn.
+3. **Behaviour transmits; it just isn't the lever.** §3.4c is a positive control — the
+   pipeline demonstrably carries a data behaviour through to eval with perfect rank
+   fidelity, so "the arms didn't learn the data" cannot explain base ≫ arms. Yet the two
+   arms that generate the *most* reasoning prose score 63 and 62.
+4. **Spearman(score, think-calls/instance) = +0.57** across the 7 models — the first
    behavioural axis in this campaign with a *positive* sign (depth was −0.32, verification
    −0.32 / −0.43). **But base drives it entirely**: excluding base it falls to **+0.31**,
    n = 6, nowhere near significance. Base beats the arms on nearly every axis, so any
-   base-inclusive correlation is weak evidence. **Not carried as a mechanism.**
+   base-inclusive correlation is weak evidence. **Not carried as a mechanism.** The
+   token-share version of the same test agrees: **+0.61** with base, **+0.37** without.
+5. **The biggest split in the data is elsewhere.** Base spends 45.8% of its output on
+   `terminal` and 16.2% on plain message content; every arm is `file_editor`-dominant
+   (56–71%) with ~0% message content (§3.4c). Untested, n = 1 on the base side, but it is
+   a larger and cleaner base-vs-arms discontinuity than anything `think`-related.
 
 ---
 
