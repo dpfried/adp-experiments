@@ -84,6 +84,21 @@ fallback on the same cell gives `cap500=14, ok=31`.
 catches the whole silent-truncation family. Without it you cannot tell a complete cell from a
 truncated one — both parse fine.
 
+### Rule 1 applies one layer up, to the monitoring too: an empty result is not a zero.
+
+Near-miss, 2026-08-05 17:11 UTC. A poll loop watching cell G ran two commands over SSH — count
+instances, then `squeue` — and concluded **"JOBS GONE — array finished or died"**, then ran the
+full analysis. In fact **SSH itself had died** (the warm `ControlMaster` socket was reaped a
+minute earlier), so *both* commands returned empty: instance count `0`, `squeue` blank. Read
+literally, the watcher reported that a run at 51/100 had finished, and the analysis it triggered
+would have described a **half-truncated cell as a complete one** — revert #2's exact shape,
+arriving through the monitoring layer instead of the reader.
+
+The fix is the same as everywhere else in this file: **check that the command succeeded before
+interpreting its output.** `n=$(ssh …)` returning `""` must branch on `$?`, not be defaulted to
+`0` with `${n:-0}`. A liveness probe that cannot distinguish *"I could not ask"* from *"the answer
+is none"* is not a liveness probe.
+
 ## Rule 2 — Compute-match before you compare. Score attempt 1.
 
 The harness retries whichever instances **its critic** judges failed, and attempts ≥2 sample at
