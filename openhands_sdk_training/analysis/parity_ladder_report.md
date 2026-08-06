@@ -1,6 +1,6 @@
 # Prompt-parity / think-stub ladder — status report
 
-*Written 2026-08-05. Companion to `prompt_parity_prereg.md`, `think_stub_prereg.md` and
+*Written 2026-08-05, ladder completed 2026-08-06. Companion to `prompt_parity_prereg.md`, `think_stub_prereg.md` and
 the running `parity_ladder_amendment.md` (10 addenda). Numbers here are the ones I am
 willing to defend; everything I am not willing to defend is listed in
 [What is not measured](#what-is-not-measured) rather than omitted.*
@@ -14,16 +14,17 @@ and had to re-score. State as of writing:
 | piece | state |
 |---|---|
 | rollouts A–F | complete |
-| rollout G (prefill-blocked base) | running, 62/100 instances usable so far |
+| rollout G (prefill-blocked base) | 62/100 instances; **score not pursued** — its confounds make it unreadable |
 | clean re-score, B and F | **complete** — the primary rung is readable |
 | clean re-score, A / C / D / E | **complete** (landed after this report was first written; see [The clean ladder](#the-clean-ladder-all-rungs)) |
 | clean re-score, aggregates (all cells) | **not started** — larger compute, needs a decision |
 | E aggregate | never scored at all (lost a shard to walltime) |
 
-So: **the matched ladder is now complete and readable** (D at 75/100, null and unlikely
-to move), and what remains is the whole-campaign *aggregate* board, which needs
-re-scoring before any of its numbers can be quoted. The findings below do not depend on
-that.
+So: **the matched ladder is complete and readable at n=100 on every rung.** What remains
+is the whole-campaign *aggregate* board, which needs re-scoring before any of its
+numbers can be quoted, and G — whose score is deliberately not being pursued (see
+[What is not measured](#what-is-not-measured)). The findings below do not depend on
+either.
 
 ---
 
@@ -134,8 +135,9 @@ Raw counts matter here because a rounded 0.0% hid a real event: cell A's free te
 
 So blocking prose does not make the model act more; it makes the model spend a seventh
 of its turns narrating into a tool instead of acting. The reasoning volume is
-conserved and re-routed. Whether that helps is a *score* question, and G's score is
-not in yet (job 876166 staged).
+conserved and re-routed. Whether that helps is a *score* question, and G's score is not
+being pursued: its two confounds point in opposite directions and are unequal, so it is
+unreadable either way (see [What is not measured](#what-is-not-measured)).
 
 Cell F is the other half of the story: the stub does not suppress reasoning, it
 **relocates** it. 99.9% of F's turns emit a `<think>` tag, **0.0% of them close it**,
