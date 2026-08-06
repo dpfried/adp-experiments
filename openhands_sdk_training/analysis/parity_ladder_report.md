@@ -16,8 +16,7 @@ and had to re-score. State as of writing:
 | rollouts A–F | complete |
 | rollout G (prefill-blocked base) | running, 62/100 instances usable so far |
 | clean re-score, B and F | **complete** — the primary rung is readable |
-| clean re-score, A / C / E | **complete** (landed after this report was first written; see [The clean ladder](#the-clean-ladder-all-rungs)) |
-| clean re-score, D | 75/100 scored, one shard still running |
+| clean re-score, A / C / D / E | **complete** (landed after this report was first written; see [The clean ladder](#the-clean-ladder-all-rungs)) |
 | clean re-score, aggregates (all cells) | **not started** — larger compute, needs a decision |
 | E aggregate | never scored at all (lost a shard to walltime) |
 
@@ -176,9 +175,8 @@ The three answers to dpf's question:
 
 ## The clean ladder, all rungs
 
-Every cell re-scored under the sandbox fix, attempt-1 only, paired McNemar on the
-instances both cells actually have verdicts for. Cell D is at 75/100 and marked
-partial; nothing else is pending.
+All six cells re-scored under the sandbox fix, attempt-1 only, paired McNemar on
+n=100. **Nothing is pending; this is the final ladder.**
 
 | rung | tests | n | low | high | net | b/c | SE | σ | verdict |
 |---|---|---|---|---|---|---|---|---|---|
@@ -186,7 +184,7 @@ partial; nothing else is pending.
 | **E−A** | base vs arm, both stock | 100 | A 16 | E 28 | **+12** | 21/9 | 5.48 | **2.19** | **significant** |
 | A−B | the stub, arm side | 100 | B 14 | A 16 | +2 | 9/7 | 4.00 | 0.50 | null |
 | C−B | the wrapper and path | 100 | B 14 | C 16 | +2 | 8/6 | 3.74 | 0.53 | null |
-| D−C | prohibition + phase list *(partial)* | 75 | C 10 | D 12 | +2 | 5/3 | 2.83 | 0.71 | null |
+| D−C | prohibition + phase list | 100 | C 16 | D 16 | **+0** | 5/5 | 3.16 | 0.00 | null |
 | E−F | the stub, base side | 100 | F 24 | E 28 | +4 | 13/9 | 4.69 | 0.85 | null |
 | **C−A** (registered **L1**) | all format rungs jointly | 100 | A 16 | C 16 | **+0** | 7/7 | 3.74 | 0.00 | **L1 PASSES** |
 
@@ -201,8 +199,10 @@ forced a re-measurement of every arm before further curation) does not fire. Cur
 work does not need to wait on a format re-measurement.
 
 **Every format rung is null and the model rung is not.** A−B, C−B, D−C and E−F all sit
-under 1σ, while base-vs-arm is significant on *both* template conditions (+10 nostub,
-+12 stock). Per the attribution rule fixed in advance, the score difference is
+under 1σ — and two of them (C−A, D−C) are *exactly* zero — while base-vs-arm is
+significant on *both* template conditions (+10 nostub, +12 stock). The entire arm side
+of the ladder spans 14–16 resolved out of 100 across four different prompt/template
+conditions; the base side sits at 24–28. Per the attribution rule fixed in advance, the score difference is
 attributed to the smallest rung that produces it — and no format rung produces one.
 The gap is the model, not the prompt.
 
@@ -220,7 +220,7 @@ Rungs that scoring cannot rescue:
 | rung | why not |
 |---|---|
 | F−E as a *compute-matched* claim | the registered L3 placebo fails (cap-hit E 31% vs F 0%; 35% vs 0% matched) and the aggregate form was never compute-matched — peer measured critic rejections 71/100 in F vs 15/100 in E. The a1x rung above sidesteps this by using attempt 1 only |
-| D−C | **confounded by construction** — D drops 3 phases as well as changing the prompt, so its (null) value bundles two manipulations. Unbundling needs new rollouts |
+| D−C | **confounded by construction** — D drops 3 phases as well as changing the prompt, so its exact-zero bundles two manipulations that could in principle cancel. Unbundling needs new rollouts |
 | G−E on score | **downgraded, do not wait for it** — see below |
 
 ## What is not measured
@@ -262,9 +262,7 @@ Stated explicitly so none of it reads as covered:
    only thing standing between the campaign and a quotable set of numbers — until it
    happens the honest form of every aggregate is "≥ X". It is CPU-only but across all
    cells, so it is a scope call rather than a detail.
-2. Let D's last shard finish and re-read D−C; it is null at 75/100 and unlikely to move,
-   and it stays flagged as confounded regardless.
-3. Teach `ladder_readout.py` to prefer the `_a1x` suffix and print which scoring pass it
+2. Teach `ladder_readout.py` to prefer the `_a1x` suffix and print which scoring pass it
    used — it still defaults to the contaminated `_a1`.
 4. **Do not** spend GPU on further channel-blocking rungs, and do not wait on G's score.
 5. Do not spend GPU on unbundling D−C unless the prompt question becomes decision-
