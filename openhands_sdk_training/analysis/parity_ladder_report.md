@@ -16,13 +16,15 @@ and had to re-score. State as of writing:
 | rollouts A–F | complete |
 | rollout G (prefill-blocked base) | running, 62/100 instances usable so far |
 | clean re-score, B and F | **complete** — the primary rung is readable |
-| clean re-score, A / C / D / E | running (jobs 876119–876126, submitted together) |
+| clean re-score, A / C / E | **complete** (landed after this report was first written; see [The clean ladder](#the-clean-ladder-all-rungs)) |
+| clean re-score, D | 75/100 scored, one shard still running |
 | clean re-score, aggregates (all cells) | **not started** — larger compute, needs a decision |
 | E aggregate | never scored at all (lost a shard to walltime) |
 
-So: one rung is final, four are pending a few hours of CPU scoring, and the
-whole-campaign aggregate board needs re-scoring before any of its numbers can be
-quoted. Three findings below are complete and do not depend on the pending work.
+So: **the matched ladder is now complete and readable** (D at 75/100, null and unlikely
+to move), and what remains is the whole-campaign *aggregate* board, which needs
+re-scoring before any of its numbers can be quoted. The findings below do not depend on
+that.
 
 ---
 
@@ -172,16 +174,54 @@ The three answers to dpf's question:
   which is exactly why the B−A rung (stub on/off, arm side) is a **mechanistic null**:
   native `<think>` is 0/100 either way, because the arm never learned to use it.
 
-## Rungs that are readable, and rungs that are not
+## The clean ladder, all rungs
 
-| rung | tests | status |
-|---|---|---|
-| **F−B** | base vs arm, matched prompt + matched compute | **+10, 2.04σ, readable** |
-| B−A | the `<think>\n\n</think>` stub, arm side | mechanistic **null** — arm emits 0 native `<think>` either way (Finding 3) |
-| F−E | the stub, base side | **not readable.** Registered L3 placebo fails (cap-hit E 31% vs F 0%; 35% vs 0% matched) and it is not compute-matched — peer measured critic rejections 71/100 in F vs 15/100 in E |
-| D−C | train prompt vs eval prompt | **confounded** — D also drops 3 phases, so it bundles "prompt differs" with "instructions removed". Unbundling is new GPU scope |
-| G−E | blocking prose in the base model | census done (Finding 3); **score pending** |
-| A/C/D vs B | pending clean re-score | contaminated values (8/10/9) must not be quoted |
+Every cell re-scored under the sandbox fix, attempt-1 only, paired McNemar on the
+instances both cells actually have verdicts for. Cell D is at 75/100 and marked
+partial; nothing else is pending.
+
+| rung | tests | n | low | high | net | b/c | SE | σ | verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| **F−B** | base vs arm, both nostub | 100 | B 14 | F 24 | **+10** | 17/7 | 4.90 | **2.04** | **significant** |
+| **E−A** | base vs arm, both stock | 100 | A 16 | E 28 | **+12** | 21/9 | 5.48 | **2.19** | **significant** |
+| A−B | the stub, arm side | 100 | B 14 | A 16 | +2 | 9/7 | 4.00 | 0.50 | null |
+| C−B | the wrapper and path | 100 | B 14 | C 16 | +2 | 8/6 | 3.74 | 0.53 | null |
+| D−C | prohibition + phase list *(partial)* | 75 | C 10 | D 12 | +2 | 5/3 | 2.83 | 0.71 | null |
+| E−F | the stub, base side | 100 | F 24 | E 28 | +4 | 13/9 | 4.69 | 0.85 | null |
+| **C−A** (registered **L1**) | all format rungs jointly | 100 | A 16 | C 16 | **+0** | 7/7 | 3.74 | 0.00 | **L1 PASSES** |
+
+Three things fall out, and one of them corrects an earlier claim of mine.
+
+**L1 passes at the extreme.** The registered bound was `|C − A| ≤ 6/100`; the measured
+value is **0**, with the resolved sets differing on only 7 instances each way. B and C
+between them remove every non-semantic train/eval format difference for this arm, so
+this is the cleanest available test of "the arms are being scored unfairly by serving
+format" — and the answer is no. The registered falsifier (C − A ≥ +6, which would have
+forced a re-measurement of every arm before further curation) does not fire. Curation
+work does not need to wait on a format re-measurement.
+
+**Every format rung is null and the model rung is not.** A−B, C−B, D−C and E−F all sit
+under 1σ, while base-vs-arm is significant on *both* template conditions (+10 nostub,
++12 stock). Per the attribution rule fixed in advance, the score difference is
+attributed to the smallest rung that produces it — and no format rung produces one.
+The gap is the model, not the prompt.
+
+**I have to withdraw "removing the stub helped base."** That claim rested on F's
+contaminated aggregate (27) against an E aggregate that was never scored. Clean and
+matched, the stub rung on the base side is **E 28 vs F 24, +4, 0.85σ — null, with the
+point estimate now pointing the other way.** The substantive part of the earlier
+finding survives untouched (the stub collapses base's cap-hit rate, 31–35% → 0%, and
+relocates its reasoning into an unclosed tag), but the *score* consequence does not.
+`think_stub_prereg.md` §2 predicted removing the stub would hurt base; the honest
+reading is now "no measurable score effect either way," not "it helped."
+
+Rungs that scoring cannot rescue:
+
+| rung | why not |
+|---|---|
+| F−E as a *compute-matched* claim | the registered L3 placebo fails (cap-hit E 31% vs F 0%; 35% vs 0% matched) and the aggregate form was never compute-matched — peer measured critic rejections 71/100 in F vs 15/100 in E. The a1x rung above sidesteps this by using attempt 1 only |
+| D−C | **confounded by construction** — D drops 3 phases as well as changing the prompt, so its (null) value bundles two manipulations. Unbundling needs new rollouts |
+| G−E on score | **downgraded, do not wait for it** — see below |
 
 ## What is not measured
 
@@ -195,8 +235,21 @@ Stated explicitly so none of it reads as covered:
   harness's multi-attempt aggregator (Addendum 5) with no repaired scoring run, so any
   E aggregate that does appear will be biased low. Base cells should be reported both
   as-harness and repaired, labelled, never swapped silently.
-- **G is incomplete** (62/100 instances). Its census rates are stable-looking but its
-  score is unmeasured.
+- **G's score is unreadable and should not be waited for.** Two confounds of opposite
+  sign and unequal size: the iteration cap favours G, and malformed tool calls rise
+  1.94% → 4.66% (peer measurement, cell-G agent) which disfavours it. Opposite-signed
+  unequal confounds do not cancel — they jointly make the /500 uninterpretable. The
+  clean deliverables from G are the validity check (the block fired on 0 of 17,288
+  turns) and the relocation measurement, both of which are in Finding 3.
+- **The channel-blocking ladder should stop here**, on an argument from the
+  devil's-advocate agent that I accept: blocking one surface reroutes reasoning to the
+  next open one, and the remaining surfaces are undetectable by construction (free-text
+  tool arguments, identifier choice, whitespace and ordering, which files get opened).
+  So each drop-X rung can only ever establish "reasoning must live in some *other*
+  channel," never "reasoning off," and the regress does not terminate in a channel that
+  can be proven closed. A drop-`think()` rung would hit the same wall. The content
+  question needs a different design — a model with no reasoning channel by
+  training/RL, or an information-theoretic probe — not more ablation rungs.
 - **F−E cannot be rescued by re-scoring** — its problem is unequal compute and a failed
   placebo in the *rollouts*, not the scoring.
 - **D−C needs new rollouts** to unbundle. Not launched; GPU spend is dpf's call.
@@ -205,9 +258,14 @@ Stated explicitly so none of it reads as covered:
 
 ## Recommended next steps, in order
 
-1. Finish the four running clean re-scores; re-run `ladder_readout.py` (it still reads
-   the `_a1` suffix and must be taught to prefer `_a1x` and print which it used).
-2. Score G's attempt-1 subset (staged) and read G−E on score, not just on channel mix.
-3. **Decide** whether to re-score the aggregate board under the fix. Until that happens
-   the honest form of every aggregate number is "≥ X".
-4. Leave D−C flagged as confounded rather than quoting it.
+1. **Decide** whether to re-score the aggregate board under the fix. This is now the
+   only thing standing between the campaign and a quotable set of numbers — until it
+   happens the honest form of every aggregate is "≥ X". It is CPU-only but across all
+   cells, so it is a scope call rather than a detail.
+2. Let D's last shard finish and re-read D−C; it is null at 75/100 and unlikely to move,
+   and it stays flagged as confounded regardless.
+3. Teach `ladder_readout.py` to prefer the `_a1x` suffix and print which scoring pass it
+   used — it still defaults to the contaminated `_a1`.
+4. **Do not** spend GPU on further channel-blocking rungs, and do not wait on G's score.
+5. Do not spend GPU on unbundling D−C unless the prompt question becomes decision-
+   relevant: every format rung is null, so the prior that it matters is now low.
