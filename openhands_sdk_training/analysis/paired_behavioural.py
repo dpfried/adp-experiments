@@ -1,6 +1,6 @@
 import glob, sys, statistics, itertools
 from math import comb
-sys.path.insert(0,"/tmp")
+sys.path.insert(0,"/checkpoint/dpf/swebench-eval/analysis")
 from load_rollouts import load_cell, read_jsonl
 SE="/checkpoint/dpf/swebench-eval"
 OFFERED={"TerminalAction","FileEditorAction","ThinkAction","FinishAction","TaskTrackerAction"}
@@ -23,15 +23,21 @@ for sh in ["00","01"]:
     for r in c.rows:
         f=feats(r)
         if f: E[r["instance_id"]]=f
+# FIXED 2026-08-06: this used to read G's raw output.jsonl append log with a first-wins
+# dedup. That is an ANALYSIS_HOUSE_RULES rule-2 violation once G starts attempt 2:
+# attempt-1 rows for instances that ended in a terminal error never enter output.jsonl
+# (they go to output_errors.jsonl), so the first-seen row for those instances is an
+# ATTEMPT-2 transcript sampled at temp 0.1 -- silently mixing compute levels and
+# temperatures into one cell of a paired comparison, on its hardest instances only.
+# Symptom was a transcript count of 90 here vs 65 from cell_taxonomy.py on the same rows.
+# Both cells now go through the loader at attempt=1.
 G={}
 for sh in ["00","01"]:
-    p=glob.glob(f"{SE}/runs/out_par_G_base_prefill_evalp__s{sh}/*/*/*/output.jsonl")
-    if not p: continue
-    seen={}
-    for r in read_jsonl(p[0])[0]: seen.setdefault(r.get("instance_id"),r)
-    for iid,r in seen.items():
+    c=load_cell(f"{SE}/runs/out_par_G_base_prefill_evalp__s{sh}",
+                select=f"{SE}/select/shard_{sh}of10.txt", attempt=1)
+    for r in c.rows:
         f=feats(r)
-        if f: G[iid]=f
+        if f: G[r["instance_id"]]=f
 
 both=sorted(set(E)&set(G))
 print(f"G transcripts={len(G)}  E transcripts={len(E)}  PAIRED on both={len(both)}")

@@ -117,6 +117,44 @@ the critic dislikes.
   path from critic-rejected ones. **You cannot assume two cells of the same model are
   compute-matched.** Check.
 
+### Rule 2 breaks *asymmetrically*: `output.jsonl` leaks attempt 2 into exactly one cell.
+
+Measured 2026-08-06 on cell G. `paired_behavioural.py` read cell E through
+`load_cell(..., attempt=1)` but read cell G from its raw `out_*/…/output.jsonl` with a
+`seen.setdefault(instance_id, row)` first-wins dedup. That reads as equivalent and is not:
+
+**attempt-1 rows for instances that ended in a terminal error never enter `output.jsonl`** —
+they go to `output_errors.jsonl`. So for every errored instance the first row *present* is its
+**attempt-2 transcript, sampled at temp 0.1**. One cell of a paired comparison silently ran at a
+different compute level and temperature than the other, and only on its hardest instances.
+
+It surfaced as a **transcript-count contradiction between two scripts** — the taxonomy said G
+had 65 transcripts, the paired script said 90. Cost if unnoticed, in a section that was already
+drafted:
+
+| | contaminated read | corrected (`attempt=1`) |
+| --- | ---: | ---: |
+| paired transcripts M | 42 | **33** |
+| action events, median | 219.5 → 294.0 (25/17) | **252 → 269 (16/17, p = 1.0)** |
+| malformed tool-call p | 0.0001 | **0.0021** |
+| `AgentErrorEvent` p | 0.0004 | **0.0070** |
+
+**The contamination inflated significance and manufactured an effect** (an apparent 34% rise in
+turn count that does not exist). Every *direction* survived; two published numbers would not
+have. Lesson: `attempt=1` is not a property you apply to an analysis, it is a property you apply
+to **every cell in it** — and a cross-script count mismatch is the cheapest detector you have,
+so run two scripts over the same rows and compare their Ms.
+
+### Corollary: never reconstruct a joint distribution from marginals. Compute it.
+
+Same session, same section, caught in review before commit. Having the E and G outcome
+marginals (`ok` 46/65, `cap500` 35/18, …) and the McNemar discordance counts, I filled in a
+4×4 E×G crosstab by arithmetic. **8 of 16 interior cells were wrong**, including the headline
+"E capped, G finished" cell (I wrote 23; the truth is 22) and the both-capped cell (wrote 8,
+truth 6). Marginals plus one discordance pair do not identify a joint — they never did, and the
+numbers *look* consistent because they sum correctly. One extra loader pass gives the real table.
+Any cell of a crosstab that was not produced by counting rows is not Measured (rule 3).
+
 ## Rule 3 — Separate **Measured** from **Inferred**, physically.
 
 Every analysis section carries two labelled blocks. Measured = a number with a file path and a
@@ -187,3 +225,6 @@ Before a number enters a report, prereg, memory file, or channel post:
 6. If it corrects someone else: has it been posted for review, or am I committing it in the same
    hour I measured it?
 7. Is any premise here folklore I inherited rather than a probe I ran?
+8. Did **every cell** of the comparison go through `attempt=1` — not just the one I remembered —
+   and was **every cell of every crosstab** produced by counting rows rather than by arithmetic
+   on marginals?
