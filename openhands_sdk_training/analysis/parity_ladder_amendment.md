@@ -1070,3 +1070,62 @@ large enough to matter would be visible.
 Until that test returns, the matched rungs in the readout stay flagged **do not
 interpret**, and I will not quote the matched F−B as a result — only as a number
 whose validity is pending one specific test.
+
+## Addendum 11 — the Addendum 10 test returned H-collision. Root cause found, fixed, and it contaminates the aggregate board too
+
+The registered test from Addendum 10 ran. Cell B's attempt-1 subset, re-scored alone
+in the queue against the same bytes: **first run 6/100, serial re-run 13/100, 9
+instances disagreeing** — and a second independent serial re-score returned 14/100.
+The registered reading at ≥5 disagreements is **H-collision**: the a1 batch was
+internally damaged, and no matched rung could be quoted as it stood. H-batch
+(Addendum 8's "instance-level property of a batch, cancels within-batch") is
+**withdrawn** as the explanation.
+
+**Root cause, in the code rather than inferred.** `run_score_shards.sbatch` created
+Apptainer sandboxes under one *shared* root and pruned them keyed by `instance_id`
+alone. Every ladder cell scores the same instance set, so concurrent scoring jobs
+shared a sandbox directory per instance and deleted it out from under each other
+mid-run. A vanished sandbox scores as **unresolved** — silent, one-directional.
+Fixed in `d748808` by giving each job a `job_${TAG}_${I}of${N}` subtree and pruning
+the subtree rather than instance paths. (`env.sh`'s `ADP_WORKSPACE_LOCAL=1` already
+gave a per-job root; correctness must not depend on an env var being switched on,
+so the fix went in the sbatch.)
+
+**The damage is not uniform across cells, which kills the cancellation argument.**
+
+| cell | concurrent | serial | flips |
+|---|---|---|---|
+| B (arm, nostub) | 6/100 | 14/100 | 9 gained, 1 lost |
+| F (base, nostub) | 6/100 | 24/100 | 18 gained, **0 lost** |
+
+F lost more than twice what B lost, and lost nothing in the other direction. A
+difference of differences cannot be assumed to subtract this out; Addendum 8's hope
+that it would is retracted.
+
+**Clean primary rung**, matched compute (attempt 1 only), matched prompt, paired
+McNemar on n=100:
+
+| version | B | F | net | b/c | SE | σ |
+|---|---|---|---|---|---|---|
+| contaminated a1 | 6 | 6 | +0 | 6/6 | 3.46 | 0.00 |
+| **clean a1x** | **14** | **24** | **+10** | 17/7 | 4.90 | **2.04** |
+| aggregate (unequal compute, contaminated) | 8 | 27 | +19 | 22/3 | 5.00 | 3.80 |
+
++10 at 2.04σ clears the registered `2·SE` gate and lands in the pre-registered
+band `2·SE … +19`, whose reading is **"the gap is real and its aggregated form is
+partly inflated."** Both halves stand.
+
+**The aggregates are contaminated too, and this is the part that reaches beyond the
+ladder.** The identity gate now fails on the *aggregate* side: B's aggregate reports
+8 resolved while B's clean attempt-1 subset — a strict subset of the same rollouts —
+reports 14, with only 3 instances ever retried. A subset cannot exceed its superset
+by 11 unless the superset's scoring is damaged. Every number scored concurrently
+before `d748808` is therefore a **floor** depressed by an unknown, cell-dependent
+amount: the aggregate ladder board, the arm totals, `init` = 145/500, soup 50 /
+pooled55k 46 / pooled220k 54, and the aggregated F−B = +19. Repairing them means
+re-scoring under the fix — materially more CPU than the a1 subsets, so it is a scope
+decision rather than something to quietly start.
+
+What does *not* change: no model changed, and the direction of the campaign's
+headline (SFT lift null-to-negative against a properly measured base) is unaffected —
+the clean rung states it more defensibly than the contaminated one did.
