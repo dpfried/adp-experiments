@@ -908,9 +908,21 @@ column.**
   across all reads. The reasoning did not disappear; it moved into the `think` tool.
   **This changes what G can answer.** The manipulation is not "reasoning off" — it is
   "reasoning must be inside `think()`". A null score effect therefore reads *"the surface form
-  of the reasoning does not matter"*, **not** *"the reasoning does not matter."* Testing
-  load-bearingness **requires** the second axis (drop `think` from the offered tool list);
-  that axis is no longer an optional cheap extra.
+  of the reasoning does not matter"*, **not** *"the reasoning does not matter."*
+  **And it argues against the obvious follow-up rather than for it.** I first wrote that the
+  second axis (drop `think` from the offered tool list) was now *required*; that is wrong, and
+  this measurement is why. Having observed that closing one reasoning surface makes the
+  reasoning **move** — not stop — the prior for closing the next surface is that it moves
+  again, into native `<think>` (which cell F shows base will open), into another tool's
+  free-text argument, or into some `content` field. The second axis would then test
+  *"reasoning must be inside some-other-channel"* and a null would be the identical trap one
+  level down. **Recommendation: do not spend GPU time on the drop-`think` axis unless the
+  relocation target is pre-registered together with a method for detecting it** — and for
+  prose smuggled into tool arguments I do not currently have such a method, which means an
+  undetected relocation would read as a false "reasoning off."
+  **The relocation is itself the more robust finding: this model's reasoning survives
+  channel-blocking by rerouting.** That is a property of the model, established at
+  p = 1.3e-7, and it does not depend on any grading run.
 * **Pre-registered risk (c), cap-hit rate: CONFIRMED, and in the direction that flatters G.**
   Blocking prose cuts cap hits **35.0% → 18.0%, p = 0.0115**, and **22 of E's 35 cap-hitters
   run to completion under G**. G gets materially more usable task budget than E.
