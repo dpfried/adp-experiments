@@ -208,6 +208,14 @@ conditions; the base side sits at 24–28. Per the attribution rule fixed in adv
 attributed to the smallest rung that produces it — and no format rung produces one.
 The gap is the model, not the prompt.
 
+**Cross-check on the two significant rungs.** +10 and +12 per 100 sit alongside the
+500-instance board's +8.4pp (base 119 vs best arm 77) — a separate measurement on 5×
+the instances, a different scoring pass and a different rollout campaign. Two
+independent instruments agreeing to within ~3pp is the reason to believe the matched
+result is not a shard artifact. Before this ladder, base ≫ arm was only ever a
+cross-harness claim carrying confounds; it is now within one harness, on the same
+instances, with compute controlled, and it survives.
+
 **I have to withdraw "removing the stub helped base."** That claim rested on F's
 contaminated aggregate (27) against an E aggregate that was never scored. Clean and
 matched, the stub rung on the base side is **E 28 vs F 24, +4, 0.85σ — null, with the
@@ -216,6 +224,20 @@ finding survives untouched (the stub collapses base's cap-hit rate, 31–35% →
 relocates its reasoning into an unclosed tag), but the *score* consequence does not.
 `think_stub_prereg.md` §2 predicted removing the stub would hurt base; the honest
 reading is now "no measurable score effect either way," not "it helped."
+
+**And the mechanism is visible in the two cells, which kills a stronger claim than
+mine.** E hits the 500-iteration cap on 35% of instances and F on 0%, so E resolves 28
+of the ~65 instances it actually *completes* (**43%**) against F's 24 of 100 (**24%**).
+The stub trades completion rate for per-completion quality: un-capping base adds
+*finishers*, not *solves*. That refutes the separate claim — raised in review, and which
+I did not carry into this report but which did reach memory — that **θ₀ = 119/500 is a
+floor because the stub gags base into caps and costs it resolves**. The cap-hits the
+stub causes do not cost base resolves; 119 is base's rate, not a floor beneath which a
+truer value hides. (Distinct from, and not to be merged with, the sandbox-collision
+floors in Finding 1, which stand. Also distinct from the unattributable-26/119
+provenance question, which is about the board run, not the stub.) Credit where due: this
+concession originated with the devil's-advocate agent, against their own earlier
+position.
 
 Rungs that scoring cannot rescue:
 
