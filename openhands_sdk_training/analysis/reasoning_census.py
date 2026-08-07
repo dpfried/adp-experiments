@@ -77,29 +77,67 @@ def strip_think_tag(s):
     return True, False, before, after
 
 
+# The harness writes TWO rollout files per shard and they are not equivalent.
+# `output.jsonl` is an append log that is rewritten only at the end of a run, and
+# an instance whose attempt terminated in an error is written to
+# `output_errors.jsonl` instead -- so its attempt-1 row is MISSING from the append
+# log entirely. Measured here: E's append log holds 78/100 instances and G's 90/100,
+# while both attempt-1 files hold 100/100. Reading the append log therefore (a) drops
+# the hardest instances, exactly the ones a reasoning census is about, and (b) where
+# a later attempt did land, makes the first row present be attempt 2 at a different
+# temperature. `output.critic_attempt_1.jsonl` is the single-attempt, complete file
+# and is what every rung of the ladder was scored from.
+ROLLOUT_FILE = "output.critic_attempt_1.jsonl"
+FALLBACK_FILE = "output.jsonl"
+
+
+def rollout_paths(root, tag):
+    """Shard rollout files for a cell, attempt-1 preferred. Returns (paths, which)."""
+    for fname in (ROLLOUT_FILE, FALLBACK_FILE):
+        paths = []
+        for sh in ("00", "01"):
+            paths += sorted(glob.glob(os.path.join(
+                root, "runs", f"out_{tag}__s{sh}", "**", fname), recursive=True))
+        if paths:
+            return paths, fname
+    return [], None
+
+
 def cell_instances(root, tag):
-    """Instance ids present in a cell's rollout files, for intersection pairing."""
+    """Instance ids with a USABLE attempt-1 transcript, for intersection pairing.
+
+    Row presence is not transcript presence. Every cell has 100 rows, but where
+    attempt 1 crashed the harness writes a stub row -- instance_id, an `error`
+    string, no history at all. Those instances were still SCORED (the harness
+    recovers `test_result.git_patch` for many of them), so they belong in the
+    ladder; they carry no behaviour, so they must not sit in a behavioural
+    denominator. Measured: A/B/C/D/F 100 transcripts, G 65, E 46 -- the loss is
+    strongly condition-correlated, so an unpaired per-cell rate compares
+    instance mixes as much as conditions.
+    """
     ids = set()
-    for sh in ("00", "01"):
-        for p in sorted(glob.glob(os.path.join(
-                root, "runs", f"out_{tag}__s{sh}", "**", "output.jsonl"),
-                recursive=True)):
-            with open(p) as f:
-                for line in f:
-                    try:
-                        ids.add(json.loads(line).get("instance_id"))
-                    except Exception:
-                        pass
+    paths, _ = rollout_paths(root, tag)
+    for p in paths:
+        with open(p) as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                if any(_s(e.get("kind")) == "ActionEvent"
+                       for e in (rec.get("history") or [])):
+                    ids.add(rec.get("instance_id"))
     return ids
 
 
 def census_rollouts(root, only=None, restrict=None):
     """restrict: if given, count only these instance ids.
 
-    Cells finish at different times (E lost a shard to walltime, G is still
-    running), so the raw per-cell rates are computed over different instance
-    sets. Any rate compared ACROSS cells has to be paired or it is measuring
-    the instance mix as much as the condition.
+    Read from the attempt-1 file (see rollout_paths): all seven cells hold a
+    complete 100 instances there. Even so, pass --intersect for anything compared
+    ACROSS cells -- an unpaired rate measures the instance mix as much as the
+    condition, and the paired set is the honest denominator if any cell is ever
+    short.
     """
     rows = []
     for c, tag, model, tmpl in CELLS:
@@ -109,17 +147,13 @@ def census_rollouts(root, only=None, restrict=None):
         kinds = collections.Counter()
         insts = set()
         per_inst_actions = []
-        # The harness buries output.jsonl several levels down, under
+        # The harness buries the rollout files several levels down, under
         # <benchmark>/<provider>/adp-eval-<tag>_sdk_<sha>_maxiter_<n>/. Globbing
-        # for it rather than assuming a flat layout: an assumed path here returns
+        # for them rather than assuming a flat layout: an assumed path here returns
         # zero events, which reads identically to "this cell never reasoned".
-        paths = []
-        for sh in ("00", "01"):
-            paths += sorted(glob.glob(os.path.join(
-                root, "runs", f"out_{tag}__s{sh}", "**", "output.jsonl"),
-                recursive=True))
+        paths, srcfile = rollout_paths(root, tag)
         if not paths:
-            print(f"  (no output.jsonl found for {tag})", file=sys.stderr)
+            print(f"  (no rollout file found for {tag})", file=sys.stderr)
         for p in paths:
             with open(p) as f:
                 for line in f:
@@ -130,7 +164,7 @@ def census_rollouts(root, only=None, restrict=None):
                     iid = rec.get("instance_id")
                     if restrict is not None and iid not in restrict:
                         continue
-                    if iid in insts:      # append-log dupes: first wins
+                    if iid in insts:      # one row per instance; guard dupes
                         continue
                     insts.add(iid)
                     hist = rec.get("history") or []
@@ -169,10 +203,11 @@ def census_rollouts(root, only=None, restrict=None):
                         if raw.strip() or is_think_tool:
                             d["any_reasoning"] += 1
                         d["free_text_chars"] += len(raw.strip())
-                    per_inst_actions.append(n_act_here)
+                    if n_act_here:
+                        per_inst_actions.append(n_act_here)
         if not d["actions"]:
             continue
-        rows.append((c, model, tmpl, len(insts), per_inst_actions, d, kinds))
+        rows.append((c, model, tmpl, len(insts), per_inst_actions, d, kinds, srcfile))
     return rows
 
 
@@ -260,13 +295,19 @@ def main():
             print(f"PAIRED on the {len(restrict)} instances present in ALL of: "
                   f"{' '.join(only or [])}")
         print("=" * 108)
-        print(f"{'cell':4} {'model':5} {'tmpl':13} {'inst':>5} {'actions':>8} {'act/inst':>9} "
+        # Say which file this was read from. A census over the append log silently
+        # drops terminal-error instances and is a different measurement.
+        for c, model, tmpl, ninst, pia, d, kinds, srcfile in rows:
+            if srcfile != ROLLOUT_FILE:
+                print(f"  WARNING cell {c}: attempt-1 file absent, fell back to {srcfile}")
+        print(f"read from: {ROLLOUT_FILE} (attempt 1 only, complete)")
+        print(f"{'cell':4} {'model':5} {'tmpl':13} {'rows':>5} {'transcr':>7} {'actions':>8} {'act/tr':>7} "
               f"{'freeText':>9} {'ofWhich<think>':>15} {'textOutsideTag':>15} "
               f"{'think()':>8} {'anyReason':>10}")
-        for c, model, tmpl, ninst, pia, d, kinds in rows:
+        for c, model, tmpl, ninst, pia, d, kinds, srcfile in rows:
             a = d["actions"]
             api = sum(pia) / len(pia) if pia else 0
-            print(f"{c:4} {model:5} {tmpl:13} {ninst:5} {a:8} {api:9.1f} "
+            print(f"{c:4} {model:5} {tmpl:13} {ninst:5} {len(pia):7} {a:8} {api:7.1f} "
                   f"{pct(d['free_text_any'], a):>9} {pct(d['think_tag'], a):>15} "
                   f"{pct(d['free_text_outside_tag'], a):>15} "
                   f"{pct(d['think_tool'], a):>8} {pct(d['any_reasoning'], a):>10}")
@@ -275,21 +316,25 @@ def main():
         # and the difference matters here: cell A printed freeText 0.0% while
         # carrying a non-zero character total. Zero and 0.04% are different claims.
         print(f"{'cell':4} {'freeTextN':>10} {'think()N':>9} {'tagN':>7} "
-              f"{'think()/inst':>13} {'freeText/inst':>14}")
-        for c, model, tmpl, ninst, pia, d, kinds in rows:
-            ni = ninst or 1
+              f"{'think()/transcr':>16} {'freeText/transcr':>17}")
+        for c, model, tmpl, ninst, pia, d, kinds, srcfile in rows:
+            ni = len(pia) or 1
             print(f"{c:4} {d['free_text_any']:10} {d['think_tool']:9} {d['think_tag']:7} "
-                  f"{d['think_tool'] / ni:13.2f} {d['free_text_any'] / ni:14.2f}")
+                  f"{d['think_tool'] / ni:16.2f} {d['free_text_any'] / ni:17.2f}")
         print()
         print(f"{'cell':4} {'tagClosed':>10} {'tagNonEmpty':>12} {'meanTagChars':>13} "
               f"{'meanFreeChars':>14} {'msgOnlyTurns':>13}")
-        for c, model, tmpl, ninst, pia, d, kinds in rows:
+        for c, model, tmpl, ninst, pia, d, kinds, srcfile in rows:
             tt = d["think_tag"] or 1
             ft = d["free_text_any"] or 1
             print(f"{c:4} {pct(d['think_tag_closed'], d['think_tag']):>10} "
                   f"{pct(d['think_tag_nonempty'], d['think_tag']):>12} "
                   f"{d['tag_inner_chars'] // tt:13} {d['free_text_chars'] // ft:14} "
                   f"{d['msg_only_turns']:13}")
+        print("  rows          = rollout records; transcr = those with >=1 ActionEvent. Where attempt 1")
+        print("                  crashed the harness writes a stub row with no history: it was still")
+        print("                  scored, but it carries no behaviour, so per-instance rates divide by")
+        print("                  transcr, not rows. --intersect pairs on transcripts too.")
         print("  freeText      = ActionEvent with a non-empty `thought` (channel a)")
         print("  ofWhich<think>= those whose thought starts a <think> tag (channel c) -- a SUBSET of freeText")
         print("  textOutsideTag= free text that survives removing the tag body: reasoning that is")

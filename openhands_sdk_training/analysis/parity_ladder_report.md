@@ -1,15 +1,17 @@
 # Prompt-parity / think-stub ladder — status report
 
-*Written 2026-08-05, ladder completed 2026-08-06. Companion to `prompt_parity_prereg.md`, `think_stub_prereg.md` and
-the running `parity_ladder_amendment.md` (10 addenda). Numbers here are the ones I am
+*Written 2026-08-05, ladder completed 2026-08-06, Finding 3 corrected 2026-08-07.
+Companion to `prompt_parity_prereg.md`, `think_stub_prereg.md` and
+the running `parity_ladder_amendment.md` (12 addenda). Numbers here are the ones I am
 willing to defend; everything I am not willing to defend is listed in
 [What is not measured](#what-is-not-measured) rather than omitted.*
 
 ## Are the experiments done?
 
-**No.** Rollouts (GPU work) are essentially complete; *scoring* is not, because
-mid-campaign I found a defect in the scoring harness that depresses resolve counts
-and had to re-score. State as of writing:
+**The ladder is: yes, complete and readable at n=100 on every rung.** One named piece is
+not, and it is a scope decision for dpf rather than unfinished work — the whole-campaign
+*aggregate* board still needs re-scoring under the [sandbox fix](#finding-1--the-scoring-harness-was-silently-losing-resolves-and-it-is-now-fixed)
+before any of its numbers can be quoted. State as of writing:
 
 | piece | state |
 |---|---|
@@ -17,14 +19,12 @@ and had to re-score. State as of writing:
 | rollout G (prefill-blocked base) | attempt 1 complete 100/100; **scored 2026-08-06 — G = 20/100** (see [Cell G](#cell-g--scored-and-still-not-a-causal-claim)) |
 | clean re-score, B and F | **complete** — the primary rung is readable |
 | clean re-score, A / C / D / E | **complete** (landed after this report was first written; see [The clean ladder](#the-clean-ladder-all-rungs)) |
-| clean re-score, aggregates (all cells) | **not started** — larger compute, needs a decision |
+| clean re-score, aggregates (all cells) | **not started** — larger compute, **needs a decision from dpf** |
 | E aggregate | never scored at all (lost a shard to walltime) |
 
-So: **the matched ladder is complete and readable at n=100 on every rung.** What remains
-is the whole-campaign *aggregate* board, which needs re-scoring before any of its
-numbers can be quoted. G has now been scored too, on the same attempt-1 footing (see
-[Cell G](#cell-g--scored-and-still-not-a-causal-claim)). The findings below do not depend
-on the aggregate re-score.
+None of the findings below depend on the aggregate re-score. Finding 3 was recomputed on
+2026-08-07 after I found that the census script had been reading the wrong rollout file
+(Addendum 12); the corrected numbers are the ones below, and no ladder score moved.
 
 ---
 
@@ -99,49 +99,93 @@ calls. Three channels, which are **not disjoint** — for base-nostub the `<thin
 sits at char 0 of the `thought` field, so channel (c) *is* channel (a), same text under
 two names. Reported nested.
 
-### Rollouts — paired on the 62 instances present in every cell
+### Correction, 2026-08-07 — this section was recomputed
 
-Denominator: one `ActionEvent` (an assistant turn that called a tool).
+The first version of this section read `output.jsonl`. That is the harness's **append
+log**, which omits attempt-1 rows for instances whose attempt terminated in an error and
+therefore silently substitutes attempt-2 transcripts on exactly the hard instances. The
+"62 instances present in every cell" in the old heading was a property of my glob, not of
+the experiment. The census now reads `output.critic_attempt_1.jsonl` — the same file
+every ladder rung was scored from. **No ladder number moved**; the numbers in this
+section did. Full accounting in Addendum 12.
 
-| cell | model | template | act/inst | free text | of which `<think>` | prose outside tag | `think()` | any |
+### Coverage first, because it changes the denominator
+
+All seven cells have 100 attempt-1 *rows*, but a row is not a transcript: where attempt 1
+crashed, the harness writes a stub carrying an `error` string and no history.
+
+| cell | rows | with a transcript | with a patch | resolved | resolved / patched | resolves with **no** transcript |
+|---|---|---|---|---|---|---|
+| A | 100 | 100 | 95 | 16 | 16.8% | 0 |
+| B | 100 | 100 | 97 | 14 | 14.4% | 0 |
+| C | 100 | 100 | 96 | 16 | 16.7% | 0 |
+| D | 100 | 100 | 98 | 16 | 16.3% | 0 |
+| E | 100 | **46** | 74 | 28 | 37.8% | **11** |
+| F | 100 | 100 | 82 | 24 | 29.3% | 0 |
+| G | 100 | **65** | 64 | 20 | 31.2% | **5** |
+
+Three things follow. The **ladder is unaffected** — all 100 instances were scored in
+every cell — and if anything its direction is conservative, since E reaches 28/100 having
+lost 54% of its conversations to crashes. The loss is **strongly condition-correlated**
+(E 54, G 35, everything else 0), so any unpaired cross-cell behavioural rate compares
+instance mixes as much as conditions; the honest paired census is **n = 33**. And a
+crashed conversation is **not** an empty one: the harness recovers `test_result.git_patch`,
+so **11 of E's 28 resolves and 5 of G's 20 have no transcript behind them** — a
+behavioural account of E's score reaches at most 17 of its 28 resolves.
+
+### Rollouts — paired on the 33 instances with a transcript in every cell
+
+Denominator: one `ActionEvent` (an assistant turn that called a tool). Rates are per
+transcript, not per row.
+
+| cell | model | template | act/transcript | free text | of which `<think>` | prose outside tag | `think()` | any |
 |---|---|---|---|---|---|---|---|---|
-| A | arm | stock | 96.3 | 0.0% | 0.0% | 0.0% | 2.5% | 2.5% |
-| B | arm | nostub | 92.0 | 0.0% | 0.0% | 0.0% | 3.1% | 3.1% |
-| C | arm | nostub+wrap | 92.6 | 0.0% | 0.0% | 0.0% | 3.3% | 3.3% |
-| D | arm | nostub+train-prompt | 74.3 | 0.0% | 0.0% | 0.0% | 3.2% | 3.2% |
-| E | base | stock | 288.4 | 48.3% | 0.0% | 48.3% | 8.2% | 52.2% |
-| F | base | nostub | 211.2 | 99.9% | 99.9% | 16.4% | 9.2% | 99.9% |
-| G | base | stock + prefill-block | 290.4 | 0.0% | 0.0% | 0.0% | **21.5%** | 21.5% |
+| A | arm | stock | 97.3 | 0.0% | 0.0% | 0.0% | 2.2% | 2.3% |
+| B | arm | nostub | 93.3 | 0.0% | 0.0% | 0.0% | 3.1% | 3.1% |
+| C | arm | nostub+wrap | 85.0 | 0.0% | 0.0% | 0.0% | 3.4% | 3.4% |
+| D | arm | nostub+train-prompt | 70.5 | 0.0% | 0.0% | 0.0% | 3.6% | 3.6% |
+| E | base | stock | 275.2 | 48.1% | 0.0% | 48.1% | 8.0% | 51.7% |
+| F | base | nostub | 269.6 | 99.7% | 99.7% | 13.5% | 9.0% | 99.7% |
+| G | base | stock + prefill-block | 314.0 | 0.0% | 0.0% | 0.0% | **21.3%** | 21.3% |
 
 Raw counts matter here because a rounded 0.0% hid a real event: cell A's free text is
-**1 turn out of 5970**, not zero.
+**1 turn out of 3211**, not zero.
 
-| cell | free-text turns | `think()` calls | `think()`/inst | free text/inst |
+| cell | free-text turns | `think()` calls | `think()`/transcript | free text/transcript |
 |---|---|---|---|---|
-| A | 1 | 151 | 2.44 | 0.02 |
-| B | 0 | 179 | 2.89 | 0.00 |
-| C | 0 | 190 | 3.06 | 0.00 |
-| D | 0 | 148 | 2.39 | 0.00 |
-| E | 8645 | 1459 | 23.53 | 139.44 |
-| F | 13083 | 1205 | 19.44 | 211.02 |
-| G | 0 | 3874 | **62.48** | 0.00 |
+| A | 1 | 72 | 2.18 | 0.03 |
+| B | 0 | 95 | 2.88 | 0.00 |
+| C | 0 | 96 | 2.91 | 0.00 |
+| D | 0 | 83 | 2.52 | 0.00 |
+| E | 4366 | 730 | 22.12 | 132.30 |
+| F | 8870 | 804 | 24.36 | 268.79 |
+| G | 0 | 2209 | **66.94** | 0.00 |
 
-**DA's claim is real, but it is channel substitution, not more work.** E → G, paired:
+**DA's claim is real, and on the corrected data it is channel substitution more cleanly
+than before.** E → G, paired on 33:
 
-- `think()` calls per instance: 23.5 → 62.5 (**2.7×**)
-- free-text turns per instance: 139.4 → 0 (the block works — 0/18002 turns)
-- *total* actions per instance: 288.4 → 290.4 (**flat, +0.7%**)
-- therefore **non-`think` actions per instance: 264.9 → 227.9 (−14%)**
+- `think()` calls per transcript: 22.1 → 66.9 (**3.0×**, +44.8)
+- free-text turns per transcript: 132.3 → 0 (the block fired completely)
+- *total* actions per transcript: 275.2 → 314.0 (+38.8, **+14%**)
+- therefore **non-`think` actions per transcript: 253.1 → 247.1 (−2.4%, flat)**
 
-So blocking prose does not make the model act more; it makes the model spend a seventh
-of its turns narrating into a tool instead of acting. The reasoning volume is
-conserved and re-routed. Whether that helps is a *score* question, answered null and
-confounded (see [Cell G](#cell-g--scored-and-still-not-a-causal-claim)).
+Almost exactly the whole increase in actions *is* the added `think()` calls; the rate of
+actual work is unchanged. Blocking prose does not make the model act more, it makes the
+model narrate into a tool instead of into `thought`. (The old version of this bullet
+said total actions were flat and non-`think` actions fell 14%. Both figures were
+artifacts of the append log; the conclusion they supported is the one that survives, now
+on a cleaner measurement.) Whether the re-routing helps is a *score* question, answered
+null and confounded (see [Cell G](#cell-g--scored-and-still-not-a-causal-claim)).
 
 Cell F is the other half of the story: the stub does not suppress reasoning, it
-**relocates** it. 99.9% of F's turns emit a `<think>` tag, **0.0% of them close it**,
-82% are non-empty, mean 110 characters inside — and prose *outside* the tag drops from
-E's 48.3% to 16.4%. The model pours its reasoning into an unclosed tag.
+**relocates** it. 99.7% of F's turns emit a `<think>` tag, **0.0% of them close it**,
+83% are non-empty, mean 117 characters inside — and prose *outside* the tag drops from
+E's 48.1% to 13.5%. The model pours its reasoning into an unclosed tag.
+
+Note also what the corrected denominator does to the base cells: conditional on producing
+a transcript at all, E, F and G do **266–268** actions per instance unpaired (275 / 270 /
+314 paired), against the arms' 71–97. The old numbers made E and G look like outliers at
+288–290 against F's 211; that spread was the append log mixing attempt lengths.
 
 ### Training data — 3000 trajectories per arm
 
@@ -163,14 +207,15 @@ The three answers to dpf's question:
 
 - **(a) free text before a tool call.** Structurally absent from the training data — and
   what prose exists is ~100% *terminal* (the closing summary), so mid-trajectory
-  reasoning prose is ≈ 0. The arms reproduce this exactly: 1 free-text turn in ~6000.
+  reasoning prose is ≈ 0. The arms reproduce this exactly: 1 free-text turn in 3211
+  paired (1 in 10,541 unpaired) across all four arm cells.
   The behaviour is **inherited from the demonstrations**, not a template artifact.
 - **(b) `think()`.** The one channel the data does teach — 4.3–7.1% of tool calls,
   ~0.6–1.0 calls/trajectory, in 41–57% of trajectories. The arms reproduce it at
-  2.4–3.1% of calls, i.e. at roughly half the demonstrated rate. Note `scale_swe_distilled`
+  2.2–3.6% of calls, i.e. at roughly half the demonstrated rate. Note `scale_swe_distilled`
   and `swe-gym` contain **zero** `think()` calls.
 - **(c) `<think>` tag.** **Zero occurrences in all five training datasets.** So F's
-  99.9% tag rate is entirely a serving-template effect with no support in training —
+  99.7% tag rate is entirely a serving-template effect with no support in training —
   which is exactly why the B−A rung (stub on/off, arm side) is a **mechanistic null**:
   native `<think>` is 0/100 either way, because the arm never learned to use it.
 
@@ -229,7 +274,15 @@ reading is now "no measurable score effect either way," not "it helped."
 mine.** E hits the 500-iteration cap on 35% of instances and F on 0%, so E resolves 28
 of the ~65 instances it actually *completes* (**43%**) against F's 24 of 100 (**24%**).
 The stub trades completion rate for per-completion quality: un-capping base adds
-*finishers*, not *solves*. That refutes the separate claim — raised in review, and which
+*finishers*, not *solves*.
+
+*(Caveat added 2026-08-07.* That 43/24 rests on cap counts I inherited and have not
+audited. The denominator I can compute directly — resolves per patch-producing instance —
+gives **E 37.8% vs F 29.3%**, same ordering, much narrower gap. The qualitative claim
+holds on both denominators; the *size* of the effect should be quoted from the second,
+and either way both sit far above the arms' 14–17%. See Addendum 12.)*
+
+That refutes the separate claim — raised in review, and which
 I did not carry into this report but which did reach memory — that **θ₀ = 119/500 is a
 floor because the stub gags base into caps and costs it resolves**. The cap-hits the
 stub causes do not cost base resolves; 119 is base's rate, not a floor beneath which a
@@ -259,11 +312,16 @@ reasoning content.
 **What is worth noting is the direction, because it repeats.** Both manipulations that
 reduce base's cap-hit rate score *lower* than the stock stub cell: E 28 → F 24 (nostub,
 caps 35% → 0%) and E 28 → G 20 (prose blocked, caps 35% → 18%). Per-completion, all
-three line up with the mechanism in the previous section — E resolves 43% of the
-instances it completes, F 24%, G 24%. Two independent manipulations, each individually
-null, both pointing the same way: **base's resolve count is not limited by running out
-of iterations.** Un-capping it adds finishers, not solves. That is the same conclusion
-the E−F rung reached, arrived at by a different route.
+three line up with the mechanism in the previous section — on the cap denominator E
+resolves 43% of what it completes, F 24%, G 24%; on the directly computable
+resolves-per-patched denominator, **E 37.8%, F 29.3%, G 31.2%**. The ordering is the same
+on both and the spread is smaller on the second. Two independent manipulations, each
+individually null, both pointing the same way: **base's resolve count is not limited by
+running out of iterations.** Un-capping it adds finishers, not solves. That is the same
+conclusion the E−F rung reached, arrived at by a different route.
+
+G also had *more* usable attempt-1 coverage than E (65 transcripts vs 46) and still
+scored lower, which is one more reason not to read G's deficit as a coverage artifact.
 
 The clean deliverables from G remain the ones its own agent identified — the block fired
 completely (0 of 17,288 action events carry prose, vs E's 5,929/12,315 = 48.14%) and the
@@ -293,6 +351,17 @@ Stated explicitly so none of it reads as covered:
 - **G's score exists but carries no causal weight** (20/100, G−E null at 1.79σ). Its two
   confounds are of opposite sign and unequal size, so no direction is clean. Quote it as
   a descriptive cell, never as evidence about reasoning content. Details above.
+- **Why E and G lose attempt-1 conversations to harness crashes at 54% and 35% while
+  every other cell loses none** is unexplained. The error strings are
+  `Conversation run failed for id=…` plus a handful of 14400s timeouts; I have not traced
+  them to a cause, and a condition-correlated crash rate that large deserves one. It does
+  not invalidate the ladder (all 100 instances scored in every cell, and the loss works
+  *against* the cells that win), but it caps the behavioural census at n=33 and it means
+  11 of E's 28 resolves and 5 of G's 20 have no transcript to explain them.
+- **The cap-hit rates (E 35%, F 0%, G 18%)** are inherited from other agents' analyses
+  and I have not re-derived them from the attempt-1 files. Every claim that uses a
+  "completes" denominator is quoted above on both that basis and on the
+  resolves-per-patched basis I can compute directly.
 - **The channel-blocking ladder should stop here**, on an argument from the
   devil's-advocate agent that I accept: blocking one surface reroutes reasoning to the
   next open one, and the remaining surfaces are undetectable by construction (free-text

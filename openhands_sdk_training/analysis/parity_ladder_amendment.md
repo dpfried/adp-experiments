@@ -1129,3 +1129,77 @@ decision rather than something to quietly start.
 What does *not* change: no model changed, and the direction of the campaign's
 headline (SFT lift null-to-negative against a properly measured base) is unaffected —
 the clean rung states it more defensibly than the contaminated one did.
+
+## Addendum 12 — my own reasoning census was reading the wrong file, and the fix exposes a coverage asymmetry
+
+Written 2026-08-07, correcting Finding 3 of `parity_ladder_report.md`. Found by taking
+seriously a provenance warning agent-b17cac1e raised about a *different* artifact.
+
+### The defect
+
+`analysis/reasoning_census.py` globbed `output.jsonl`. That is the harness's **append
+log**: it is rewritten only at the end of a run, and an instance whose attempt
+terminated in an error is written to `output_errors.jsonl` instead, so its attempt-1
+row is absent from the append log entirely. Two consequences, both measured:
+
+| cell | instances in `output.jsonl` | instances in `output.critic_attempt_1.jsonl` |
+|---|---|---|
+| A, B, C, D, F | 100 | 100 |
+| E | 78 rows / **68** distinct | **100** |
+| G | **90** | **100** |
+
+1. **Missing instances.** The census silently dropped 32 of E's and 10 of G's, and
+   pairing across cells therefore collapsed to **62** instances — a number that appeared
+   in the report as if it were a property of the experiment rather than of my glob.
+2. **Wrong attempt.** Where a later attempt did land, the first surviving row is
+   attempt 2, at a different temperature. On the 68 instances E has in both files the
+   append log averages **291.6** ActionEvents against attempt 1's **181.1**, and the two
+   files disagree on the action count for 22 of 68 (E), 44 of 90 (G) and 71 of 100 (F).
+   Every per-instance rate in the old Finding 3 was computed over that mixture.
+
+Fixed: read `output.critic_attempt_1.jsonl`, the single-attempt complete file that
+**every rung of the ladder was already scored from**, with a fallback and a printed
+provenance line. No ladder number is affected — the ladder never read the append log.
+
+### The fix exposed a second, larger problem: row presence is not transcript presence
+
+All seven cells have 100 attempt-1 *rows*, but where attempt 1 crashed the harness
+writes a stub row — `instance_id`, an `error` string, **no history at all**:
+
+| cell | rows | with a transcript | with a patch | resolved | resolved / patched | resolves with **no** transcript |
+|---|---|---|---|---|---|---|
+| A | 100 | 100 | 95 | 16 | 16.8% | 0 |
+| B | 100 | 100 | 97 | 14 | 14.4% | 0 |
+| C | 100 | 100 | 96 | 16 | 16.7% | 0 |
+| D | 100 | 100 | 98 | 16 | 16.3% | 0 |
+| E | 100 | **46** | 74 | 28 | **37.8%** | **11** |
+| F | 100 | 100 | 82 | 24 | 29.3% | 0 |
+| G | 100 | **65** | 64 | 20 | 31.2% | **5** |
+
+Three readings, in order of how much they cost:
+
+- **The ladder is unaffected and its direction is if anything conservative.** All 100
+  instances were scored in every cell, so the paired McNemar rungs stand as computed. E
+  reaches 28/100 having lost 54% of its attempt-1 conversations to harness crashes; had
+  those run, E−A (+12) and E−F (+4) would plausibly be larger, not smaller. Likewise G
+  had *more* usable coverage than E (65 vs 46) and still scored lower.
+- **The loss is strongly condition-correlated** — E 54, G 35, everything else 0 — so an
+  *unpaired* behavioural rate across cells compares instance mixes as much as
+  conditions. `cell_instances()` now pairs on transcripts, which puts the honest
+  cross-cell census at **n = 33**, not 62 and not 100.
+- **A crashed conversation is not an empty one.** The harness recovers
+  `test_result.git_patch`, and **11 of E's 28 resolves and 5 of G's 20 come from
+  instances with no transcript**. So any behavioural account of E's score explains at
+  most 17 of its 28 resolves. This also means a "completion rate" denominator has to be
+  stated: resolved/patched is 37.8 / 29.3 / 31.2% for E / F / G, a much narrower spread
+  than the cap-based 43 / 24 / 24% quoted earlier in the report, which rests on cap
+  counts whose provenance I have not audited.
+
+### Generalise
+
+Same failure family as the three already recorded here: **a missing input read as a
+zero rather than as missing.** An absent transcript read as "this cell did not reason";
+an absent row read as "this instance does not exist". The lesson I actually take is
+narrower and about me: agent-b17cac1e's warning named `output.jsonl` explicitly, I
+verified it against the *scoring* path, found the scoring path clean, and stopped —
+without checking my own analysis scripts against the same warning.
