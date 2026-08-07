@@ -203,6 +203,20 @@ turn *cannot* carry free text next to its tool call. Prose exists only as a sepa
 | scale_swe_distilled | 3000 | 5.0% | 51.4% | **0.0%** | **0.0%** | **0** |
 | swe-gym | 199 | 8.1% | 31.5% | **0.0%** | **0.0%** | **0** |
 
+**Re-run on the full datasets, 2026-08-07** (79.9k trajectories per arm, ~320k total,
+not a 3000-trajectory sample). The sampled figures above hold; `swe-gym` is not in the
+subsets directory and remains sampled-only:
+
+| dataset | traj | prose turns | of those, terminal | `think()` % of calls | traj with `think()` | `<think>` |
+|---|---|---|---|---|---|---|
+| coderforge_preview | 79,890 | 2.7% | **100.0%** | 6.5% | 50.8% | **0** |
+| SWE-rebench (nebius) | 79,887 | 3.0% | 99.9% | 4.3% | 40.4% | **0** |
+| SWE-Zero (nvidia) | 79,874 | 2.3% | **100.0%** | 7.1% | 58.4% | **0** |
+| scale_swe_distilled | 79,900 | 4.6% | 58.4% | **0.0%** | **0.0%** | **0** |
+
+So the `<think>` = 0 claim is no longer a sampling statement: **zero occurrences in
+4.66M assistant-authored turns across all four training arms.**
+
 The three answers to dpf's question:
 
 - **(a) free text before a tool call.** Structurally absent from the training data — and
