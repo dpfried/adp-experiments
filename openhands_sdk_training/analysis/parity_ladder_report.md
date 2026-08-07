@@ -281,7 +281,8 @@ Rungs that scoring cannot rescue:
 
 Stated explicitly so none of it reads as covered:
 
-- **Every aggregate number in the campaign** is a floor of unknown size until re-scored
+- **Every aggregate number in the campaign** — including the θ₀ = 119 and best-arm 77
+  that anchor the headline — is a floor of unknown size until re-scored
   under the sandbox fix. That is the single largest outstanding item and it costs real
   CPU-hours across all cells — I have not started it because it is a scope call for dpf,
   not a detail.
@@ -313,6 +314,22 @@ Stated explicitly so none of it reads as covered:
    only thing standing between the campaign and a quotable set of numbers — until it
    happens the honest form of every aggregate is "≥ X". It is CPU-only but across all
    cells, so it is a scope call rather than a detail.
+
+   Two things should inform that call. **The verdict does not depend on it.** Base ≫ arm
+   is established by the matched ladder, which is already post-fix, compute-controlled
+   and on identical instances; the board is now corroboration, not foundation, so the
+   re-score is about *accurate absolute numbers* rather than about whether the
+   conclusion holds. And **the expected direction is upside, not risk**: the collision
+   only ever removed resolves, and on the ladder it was differentially anti-base (+18 to
+   F against +8 to B). If that asymmetry repeats on the 500-board, a clean re-score
+   *widens* the gap. That last part is a prior rather than a measurement — the proposed
+   mechanism (base's longer, more numerous runs expose more sandboxes to the race) is
+   plausible and untested, so it should not be quoted as a finding. Credit: framing from
+   the devil's-advocate agent.
+
+   If it is run, **report per-cell gained/lost, not just the net** — "18 gained, 0 lost"
+   is what distinguishes a floor-correction from a re-roll, and a re-roll would show
+   losses in both directions.
 2. Teach `ladder_readout.py` to prefer the `_a1x` suffix and print which scoring pass it
    used — it still defaults to the contaminated `_a1`.
 4. **Do not** spend GPU on further channel-blocking rungs; G's score is in and settles nothing about reasoning content, by construction.
