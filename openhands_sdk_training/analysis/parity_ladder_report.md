@@ -14,7 +14,7 @@ and had to re-score. State as of writing:
 | piece | state |
 |---|---|
 | rollouts A–F | complete |
-| rollout G (prefill-blocked base) | 62/100 instances; **score not pursued** — its confounds make it unreadable |
+| rollout G (prefill-blocked base) | attempt 1 complete 100/100; **scored 2026-08-06 — G = 20/100** (see [Cell G](#cell-g--scored-and-still-not-a-causal-claim)) |
 | clean re-score, B and F | **complete** — the primary rung is readable |
 | clean re-score, A / C / D / E | **complete** (landed after this report was first written; see [The clean ladder](#the-clean-ladder-all-rungs)) |
 | clean re-score, aggregates (all cells) | **not started** — larger compute, needs a decision |
@@ -22,9 +22,9 @@ and had to re-score. State as of writing:
 
 So: **the matched ladder is complete and readable at n=100 on every rung.** What remains
 is the whole-campaign *aggregate* board, which needs re-scoring before any of its
-numbers can be quoted, and G — whose score is deliberately not being pursued (see
-[What is not measured](#what-is-not-measured)). The findings below do not depend on
-either.
+numbers can be quoted. G has now been scored too, on the same attempt-1 footing (see
+[Cell G](#cell-g--scored-and-still-not-a-causal-claim)). The findings below do not depend
+on the aggregate re-score.
 
 ---
 
@@ -135,9 +135,8 @@ Raw counts matter here because a rounded 0.0% hid a real event: cell A's free te
 
 So blocking prose does not make the model act more; it makes the model spend a seventh
 of its turns narrating into a tool instead of acting. The reasoning volume is
-conserved and re-routed. Whether that helps is a *score* question, and G's score is not
-being pursued: its two confounds point in opposite directions and are unequal, so it is
-unreadable either way (see [What is not measured](#what-is-not-measured)).
+conserved and re-routed. Whether that helps is a *score* question, answered null and
+confounded (see [Cell G](#cell-g--scored-and-still-not-a-causal-claim)).
 
 Cell F is the other half of the story: the stub does not suppress reasoning, it
 **relocates** it. 99.9% of F's turns emit a `<think>` tag, **0.0% of them close it**,
@@ -189,6 +188,7 @@ n=100. **Nothing is pending; this is the final ladder.**
 | D−C | prohibition + phase list | 100 | C 16 | D 16 | **+0** | 5/5 | 3.16 | 0.00 | null |
 | E−F | the stub, base side | 100 | F 24 | E 28 | +4 | 13/9 | 4.69 | 0.85 | null |
 | **C−A** (registered **L1**) | all format rungs jointly | 100 | A 16 | C 16 | **+0** | 7/7 | 3.74 | 0.00 | **L1 PASSES** |
+| G−E | prose blocked, base | 100 | G 20 | E 28 | −8 | 6/14 | 4.47 | −1.79 | null (and confounded — see below) |
 
 Three things fall out, and one of them corrects an earlier claim of mine.
 
@@ -239,6 +239,36 @@ provenance question, which is about the board run, not the stub.) Credit where d
 concession originated with the devil's-advocate agent, against their own earlier
 position.
 
+### Cell G — scored, and still not a causal claim
+
+G was staged by the cell-G agent and I initially declined to score it, on the argument
+that its score is uninterpretable in either direction. That was the wrong call, and not
+because the argument is wrong: it costs two CPU shards, it completes a 7-cell ladder on
+one footing, and an absent number gets filled in by guesswork. Scored on the identical
+100-instance set with the sandbox fix: **G = 20/100, G−E = −8 at 1.79σ — null.**
+
+It does not clear the registered 2·SE bar, so the score half of the prose-blocking
+question is simply **null**, and the sign cannot be attributed either. The two confounds
+that agent-b17cac1e pre-registered and measured point in opposite directions and are
+unequal: the iteration cap **favours** G (22 of E's 35 cap-hitters run to completion
+under G; 35.0% → 18.0%, exact McNemar p = 0.0115), while malformed tool calls
+(1.94% → 4.66%, p = 0.0021) and `AgentErrorEvent`s (4 → 11, p = 0.0070) **disfavour** it.
+A loss is what the malformed-call confound predicts, so it is not evidence about
+reasoning content.
+
+**What is worth noting is the direction, because it repeats.** Both manipulations that
+reduce base's cap-hit rate score *lower* than the stock stub cell: E 28 → F 24 (nostub,
+caps 35% → 0%) and E 28 → G 20 (prose blocked, caps 35% → 18%). Per-completion, all
+three line up with the mechanism in the previous section — E resolves 43% of the
+instances it completes, F 24%, G 24%. Two independent manipulations, each individually
+null, both pointing the same way: **base's resolve count is not limited by running out
+of iterations.** Un-capping it adds finishers, not solves. That is the same conclusion
+the E−F rung reached, arrived at by a different route.
+
+The clean deliverables from G remain the ones its own agent identified — the block fired
+completely (0 of 17,288 action events carry prose, vs E's 5,929/12,315 = 48.14%) and the
+relocation is decisive (narration → `think()`, +10.8pp, p = 1.3e-7) — not the score.
+
 Rungs that scoring cannot rescue:
 
 | rung | why not |
@@ -259,12 +289,9 @@ Stated explicitly so none of it reads as covered:
   harness's multi-attempt aggregator (Addendum 5) with no repaired scoring run, so any
   E aggregate that does appear will be biased low. Base cells should be reported both
   as-harness and repaired, labelled, never swapped silently.
-- **G's score is unreadable and should not be waited for.** Two confounds of opposite
-  sign and unequal size: the iteration cap favours G, and malformed tool calls rise
-  1.94% → 4.66% (peer measurement, cell-G agent) which disfavours it. Opposite-signed
-  unequal confounds do not cancel — they jointly make the /500 uninterpretable. The
-  clean deliverables from G are the validity check (the block fired on 0 of 17,288
-  turns) and the relocation measurement, both of which are in Finding 3.
+- **G's score exists but carries no causal weight** (20/100, G−E null at 1.79σ). Its two
+  confounds are of opposite sign and unequal size, so no direction is clean. Quote it as
+  a descriptive cell, never as evidence about reasoning content. Details above.
 - **The channel-blocking ladder should stop here**, on an argument from the
   devil's-advocate agent that I accept: blocking one surface reroutes reasoning to the
   next open one, and the remaining surfaces are undetectable by construction (free-text
@@ -288,6 +315,6 @@ Stated explicitly so none of it reads as covered:
    cells, so it is a scope call rather than a detail.
 2. Teach `ladder_readout.py` to prefer the `_a1x` suffix and print which scoring pass it
    used — it still defaults to the contaminated `_a1`.
-4. **Do not** spend GPU on further channel-blocking rungs, and do not wait on G's score.
+4. **Do not** spend GPU on further channel-blocking rungs; G's score is in and settles nothing about reasoning content, by construction.
 5. Do not spend GPU on unbundling D−C unless the prompt question becomes decision-
    relevant: every format rung is null, so the prior that it matters is now low.
