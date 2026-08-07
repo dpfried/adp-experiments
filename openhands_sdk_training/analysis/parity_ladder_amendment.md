@@ -1203,3 +1203,65 @@ an absent row read as "this instance does not exist". The lesson I actually take
 narrower and about me: agent-b17cac1e's warning named `output.jsonl` explicitly, I
 verified it against the *scoring* path, found the scoring path clean, and stopped —
 without checking my own analysis scripts against the same warning.
+
+## Addendum 13 — the crash asymmetry is depth hitting ceilings, and my per-completion number was wrong
+
+Written 2026-08-07. Addendum 12 left one thing unexplained (why E and G lose 54% and 35%
+of attempt-1 conversations while every other cell loses none) and one thing caveated
+(cap-hit rates inherited from agent-b17cac1e, not re-derived). Both are now settled, on a
+hypothesis from the devil's-advocate agent, and settling them turned up an arithmetic
+error of my own that is larger than either.
+
+### The crash asymmetry: depth, not a gremlin
+
+| cell | crashed | 500-iter cap | wallclock 14400s | ENOSPC | generic |
+|---|---|---|---|---|---|
+| E | 54 | **35** | 6 | 3 | 10 |
+| G | 35 | **18** | 0 | 2 | 15 |
+| F | 0 | 0 | 0 | 0 | 0 |
+| A–D | 0 | 0 | 0 | 0 | 0 |
+
+81% of E's crashes and 57% of G's are **per-run resource ceilings**. The arms take ~62–97
+actions per instance and never approach one; base takes ~270. Within a cell the crashed
+instances are the *deeper* ones: measured on their later attempts, median **304** actions
+for E's attempt-1 crashers vs **223** for its completers, and **333** vs **271** for G.
+
+Two consequences. The cap counts **independently confirm agent-b17cac1e's 35 / 0 / 18 per
+100** exactly, re-derived from the attempt-1 files, so Addendum 12's "inherited and
+unaudited" caveat is withdrawn. And the crash is a **handicap base wins through**: E's
+completed runs resolve at 37%, its crashed ones at 20%, so absent the crashes E lands
+nearer 37/100 than 28 — E−A (+12) and E−F (+4) understate the gap by up to ~9. Upper
+bound, since the crashers are the deeper and probably harder instances. The arms eat none
+of it.
+
+### The error: 43% was a numerator/denominator mismatch
+
+The report said *"E resolves 28 of the ~65 instances it actually completes (**43%**)
+against F's 24 of 100 (**24%**)"*. That divides E's **total** resolves by its **non-capped**
+instance count — but **9 of those 28 resolves come from capped instances**, so the
+numerator counts what the denominator throws away. Decomposed by failure class:
+
+| cell | completed | cap500 | wallclock | ENOSPC | generic | non-capped subset |
+|---|---|---|---|---|---|---|
+| E | 17/46 (37%) | 9/35 (26%) | 0/6 | 0/3 | 2/10 | **19/65 = 29.2%** |
+| G | 15/65 (23%) | 3/18 (17%) | — | 0/2 | 2/15 | **17/82 = 20.7%** |
+| F | 24/100 (24%) | — | — | — | — | **24/100 = 24.0%** |
+
+So the honest per-completion comparison is **E 29.2% vs F 24.0%** — same ordering, but a
+~5pp gap where I had published ~19pp — and **G at 20.7% falls below F** rather than tying
+it. The independent resolves-per-patched denominator (E 37.8 / F 29.3 / G 31.2%) also
+keeps E on top. The qualitative claim ("the stub trades completion rate for per-completion
+quality; un-capping adds finishers, not solves") survives on all three denominators, and
+all three sit above the arms' 14–17%. Its *magnitude* does not survive: quote ~5pp.
+
+### Generalise
+
+Every denominator in this campaign has now bitten once. The pattern in my own errors is
+specific and worth naming: **I keep pairing a total with a filtered denominator.** The 43%
+did it (all resolves ÷ non-capped instances), and the n=62 census did it (all cells' rates
+÷ whichever instances my glob happened to return). Both read as more decisive than the
+data. Rule for the rest of this campaign: when a rate is quoted, state what was excluded
+from the denominator and confirm the numerator excludes it too.
+
+Still open: the generic `Conversation run failed` residue (10 in E, 15 in G) has no
+resource signature and no traced cause.

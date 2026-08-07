@@ -2,7 +2,7 @@
 
 *Written 2026-08-05, ladder completed 2026-08-06, Finding 3 corrected 2026-08-07.
 Companion to `prompt_parity_prereg.md`, `think_stub_prereg.md` and
-the running `parity_ladder_amendment.md` (12 addenda). Numbers here are the ones I am
+the running `parity_ladder_amendment.md` (13 addenda). Numbers here are the ones I am
 willing to defend; everything I am not willing to defend is listed in
 [What is not measured](#what-is-not-measured) rather than omitted.*
 
@@ -285,16 +285,20 @@ relocates its reasoning into an unclosed tag), but the *score* consequence does 
 reading is now "no measurable score effect either way," not "it helped."
 
 **And the mechanism is visible in the two cells, which kills a stronger claim than
-mine.** E hits the 500-iteration cap on 35% of instances and F on 0%, so E resolves 28
-of the ~65 instances it actually *completes* (**43%**) against F's 24 of 100 (**24%**).
-The stub trades completion rate for per-completion quality: un-capping base adds
-*finishers*, not *solves*.
+mine.** E hits the 500-iteration cap on 35% of instances and F on 0%. The direction of
+the per-completion effect holds: the stub trades completion rate for per-completion
+quality, and un-capping base adds *finishers*, not *solves*.
 
-*(Caveat added 2026-08-07.* That 43/24 rests on cap counts I inherited and have not
-audited. The denominator I can compute directly — resolves per patch-producing instance —
-gives **E 37.8% vs F 29.3%**, same ordering, much narrower gap. The qualitative claim
-holds on both denominators; the *size* of the effect should be quoted from the second,
-and either way both sit far above the arms' 14–17%. See Addendum 12.)*
+*(Arithmetic corrected 2026-08-07 — the number I published for this was wrong.* I had
+written "E resolves 28 of the ~65 instances it completes (**43%**) against F's 24 of 100
+(**24%**)". That divides E's **total** 28 resolves by its **non-capped** 65 — but 9 of
+those 28 resolves come from capped instances, so the numerator includes what the
+denominator excludes. Decomposed properly, E resolves **19/65 = 29.2%** of its non-capped
+instances against F's **24/100 = 24.0%**, and G **17/82 = 20.7%**. Same ordering for
+E vs F, but the gap is ~5pp, not ~19pp, and **G now sits below F rather than tied with
+it.** The independent resolves-per-patched denominator gives E 37.8 / F 29.3 / G 31.2%.
+The qualitative claim survives on every denominator and all of them sit above the arms'
+14–17%; the *effect size* is much smaller than I first reported. See Addendum 12.)*
 
 That refutes the separate claim — raised in review, and which
 I did not carry into this report but which did reach memory — that **θ₀ = 119/500 is a
@@ -325,11 +329,9 @@ reasoning content.
 
 **What is worth noting is the direction, because it repeats.** Both manipulations that
 reduce base's cap-hit rate score *lower* than the stock stub cell: E 28 → F 24 (nostub,
-caps 35% → 0%) and E 28 → G 20 (prose blocked, caps 35% → 18%). Per-completion, all
-three line up with the mechanism in the previous section — on the cap denominator E
-resolves 43% of what it completes, F 24%, G 24%; on the directly computable
-resolves-per-patched denominator, **E 37.8%, F 29.3%, G 31.2%**. The ordering is the same
-on both and the spread is smaller on the second. Two independent manipulations, each
+caps 35% → 0%) and E 28 → G 20 (prose blocked, caps 35% → 18%). Per-completion, on the corrected cap
+denominator: **E 29.2% (19/65), F 24.0% (24/100), G 20.7% (17/82)**; on the independent
+resolves-per-patched denominator, **E 37.8%, F 29.3%, G 31.2%**. E leads on both. Two independent
 individually null, both pointing the same way: **base's resolve count is not limited by
 running out of iterations.** Un-capping it adds finishers, not solves. That is the same
 conclusion the E−F rung reached, arrived at by a different route.
@@ -365,17 +367,30 @@ Stated explicitly so none of it reads as covered:
 - **G's score exists but carries no causal weight** (20/100, G−E null at 1.79σ). Its two
   confounds are of opposite sign and unequal size, so no direction is clean. Quote it as
   a descriptive cell, never as evidence about reasoning content. Details above.
-- **Why E and G lose attempt-1 conversations to harness crashes at 54% and 35% while
-  every other cell loses none** is unexplained. The error strings are
-  `Conversation run failed for id=…` plus a handful of 14400s timeouts; I have not traced
-  them to a cause, and a condition-correlated crash rate that large deserves one. It does
-  not invalidate the ladder (all 100 instances scored in every cell, and the loss works
-  *against* the cells that win), but it caps the behavioural census at n=33 and it means
-  11 of E's 28 resolves and 5 of G's 20 have no transcript to explain them.
-- **The cap-hit rates (E 35%, F 0%, G 18%)** are inherited from other agents' analyses
-  and I have not re-derived them from the attempt-1 files. Every claim that uses a
-  "completes" denominator is quoted above on both that basis and on the
-  resolves-per-patched basis I can compute directly.
+- **The crash asymmetry is now explained** (was listed here as unexplained; resolved
+  2026-08-07 on a hypothesis from the devil's-advocate agent). It is not an independent
+  gremlin, it is the **depth asymmetry hitting per-run ceilings**. Decomposed:
+
+  | cell | crashed | 500-iter cap | wallclock 14400s | ENOSPC | generic |
+  |---|---|---|---|---|---|
+  | E | 54 | **35** | 6 | 3 | 10 |
+  | G | 35 | **18** | 0 | 2 | 15 |
+  | F, A–D | 0 | 0 | 0 | 0 | 0 |
+
+  81% of E's and 57% of G's crashes are resource-ceiling failures. The arms run ~62–97
+  actions and never approach a ceiling; base runs ~270. And within a cell the crashed
+  instances are the *deeper* ones — on later attempts they take a median **304** actions
+  vs **223** for the instances that completed at attempt 1 (E), **333** vs **271** (G).
+  Two side effects worth keeping: this **confirms agent-b17cac1e's cap-hit rates exactly**
+  (35 / 0 / 18 per 100, re-derived independently from the attempt-1 files, so the earlier
+  "inherited and unaudited" caveat is withdrawn), and it makes the matched gap a floor —
+  E's completed runs resolve at 37% against 20% for its crashed ones, so absent the
+  crashes E would land nearer 37/100 than 28, widening E−A (+12) and E−F (+4) by up to
+  ~9. That estimate is an upper bound, since the crashed instances are the deeper and
+  probably harder ones. The arms eat none of this handicap.
+- **The generic `Conversation run failed` residue is still untraced** — 10 in E, 15 in G,
+  with no resource signature. Small enough not to gate anything, and it works against the
+  cells that win, but it is the one part of the crash story without a cause.
 - **The channel-blocking ladder should stop here**, on an argument from the
   devil's-advocate agent that I accept: blocking one surface reroutes reasoning to the
   next open one, and the remaining surfaces are undetectable by construction (free-text
