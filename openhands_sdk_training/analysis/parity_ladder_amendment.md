@@ -1265,3 +1265,119 @@ from the denominator and confirm the numerator excludes it too.
 
 Still open: the generic `Conversation run failed` residue (10 in E, 15 in G) has no
 resource signature and no traced cause.
+
+---
+
+## Addendum 14 — how much would the aggregate re-score actually move the board? (2026-08-07)
+
+dpf asked the obvious question about recommended-next-step 1: *how much do we think that
+will change results?* The report answered it with a prior. It is measurable instead, from
+reports already on disk, without re-running any scoring — and the measurement **contradicts
+the prior's sign** and **splits the defect into two unrelated causes** that I had been
+treating as one.
+
+### Failed scoring is not silent — it is written into the report JSON
+
+Three distinct families, which must be kept apart because they do not share a cause:
+
+| family | signature | cause |
+|---|---|---|
+| **ENOTEMPTY** | `scoring_error: [Errno 39] Directory not empty: '.../swebench-sandboxes/<id>.tmp' -> '.../<id>'` | the sandbox collision proper |
+| **build** | `apptainer build failed` / `sandbox verification failed` | a separate, transient infrastructure failure |
+| **soft** | patch applies, but PASS_TO_PASS has **zero** passes and >0 failures | broken environment, not broken patch |
+
+`analysis/collision_signature_audit.py` counts and calibrates all three.
+
+### ENOTEMPTY is exactly a concurrency signature — and it is not universal
+
+`rename(tmp, final)` returns ENOTEMPTY only when something else already holds the
+destination, so this family fires only when scoring jobs overlap in time. Reconstructing
+true job windows (prediction files are written at start, reports at end — using report
+mtimes alone understates every window by 1–5 hours) and cross-referencing:
+
+| cells | overlapping jobs | ENOTEMPTY |
+|---|---|---|
+| rebench ∥ scale | each other | 41 / 27 |
+| soup_a1p55 ∥ soup_top2 | each other | 79 / 75 |
+| v3a1tok ∥ v3a1max | each other | 72 / 71 |
+| pooled55k ∥ soup_a2p0 ∥ init_singlerun | 3-way | 18 / 30 / 1 |
+| init ∥ soup_uniform4 | each other | 14 / 12 |
+| **coderforge, swezero, soup_a0p7, pooled220k** | **none** | **0 / 0 / 0 / 0** |
+
+Four cells were scored alone and carry **zero** collisions. Cell E, scored after the fix
+landed, also carries zero against 23–38 in every pre-fix ladder cell. Both are independent
+confirmations that the signature is the collision and that the fix works.
+
+**I had this wrong twice on the way here.** First I lumped `build`/`verify` in with
+ENOTEMPTY, which made the collision look universal. Then, finding solo-scored cells
+"contaminated" anyway, I proposed that each job scored every instance twice and raced with
+itself — from 1000 prediction rows against 500 instances. That was a miscount: a shard dir
+holds `shard_N.jsonl` **and** `shard_N.swebench.jsonl`, the same predictions in two formats.
+It is one row per instance. **Claim retracted before it reached the report.** The audit
+script now carries a `dupes` guard so the same miscount cannot recur.
+
+What actually contaminates the solo cells is the `build` family — 33–93 instances per cell,
+present everywhere, unrelated to concurrency and never diagnosed until now.
+
+### Recovery calibrated on the six ladder cells that have both passes
+
+| family | flagged | recovered on clean re-score | rate |
+|---|---|---|---|
+| ENOTEMPTY | 151 | 29 | **19.2%** |
+| build | 37 | 7 | **18.9%** |
+| soft | 73 | 4 | **5.5%** |
+| | | gained **51**, lost **4** | |
+
+A flagged instance comes back about one time in five, and the process is close to one-way —
+the 4 losses are ordinary run-to-run noise (cf. the ±7/100 calibration).
+
+### Projected board
+
+| cell | now | projected clean |
+|---|---|---|
+| init_singlerun (θ₀) | 119 | **~127** |
+| init (multi-run) | 145 | ~152 |
+| swezero | 77 | **~90** |
+| rebench | 70 | ~84 |
+| coderforge | 48 | ~66 |
+| scale | 35 | ~51 |
+| soup_uniform4 | 50 | ~64 |
+| pooled55k / pooled220k | 46 / 54 | ~59 / ~65 |
+| soup_top2 | 62 | ~86 |
+| v3a1tok / v3a1max | 63 / 62 | ~86 / ~86 |
+
+**Nothing reorders.** Base still ≫ every arm; arm ordering swezero > rebench > coderforge >
+scale holds; souping still loses to its best member (~64 vs ~90); pooling still loses. What
+moves is the absolute level, by roughly **+2 to +5 points per 100**, one-way up.
+
+### The prior in step 1 was backwards
+
+The report guessed the re-score would be differentially anti-base and would **widen** the
+gap, extrapolating from the ladder's +18 to F against +8 to B. On the board it runs the
+other way, for a directly measurable reason: **a sandbox is only built for an instance that
+produced a patch**, and on the board the arms patch essentially everything while base
+patches 72% (362/500). Fewer sandboxes built means fewer chances to be flagged.
+
+Projected base − best-arm gap: **42 → ~37**. It narrows slightly and comes nowhere near
+closing. The ladder's anti-base asymmetry was a property of those cells, not of the
+mechanism — the same mistake in a different coat as the one named in Addendum 13:
+generalising from one measured instance to a directional guarantee.
+
+### Independent check on the projection
+
+The clean ladder measures the same two conditions at n=100 and knows nothing about these
+counts. Base clean: E 28, F 24 per 100 = **24–28%**. Projected clean board base: 127/500 =
+**25.4%**. Arms clean on the ladder: A/B/C/D **14–16%**. Projected clean board best arm:
+90/500 = **18%**. Both brackets agree, and the contaminated board (23.8% base / 15.4% best
+arm) sits just below both. That is the most that can be said without running it.
+
+### What this means for the decision
+
+The re-score buys accurate absolute numbers — about +2 to +5 per 100, one-way up — and it
+does not buy a different conclusion; it will slightly *narrow* base's lead rather than
+widen it. If it is run, still report per-cell gained/lost: 51-gained/4-lost is the shape
+that distinguishes a floor-correction from a re-roll, and it should reappear.
+
+One thing the re-score should **not** be expected to fix: the `build` family is transient
+infrastructure, so a re-run will hit its own fresh crop. Budget for a second pass over
+whatever it flags, or accept ~1 point per 100 of residue.

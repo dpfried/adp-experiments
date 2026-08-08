@@ -1,8 +1,8 @@
 # Prompt-parity / think-stub ladder — status report
 
-*Written 2026-08-05, ladder completed 2026-08-06, Finding 3 corrected 2026-08-07.
-Companion to `prompt_parity_prereg.md`, `think_stub_prereg.md` and
-the running `parity_ladder_amendment.md` (13 addenda). Numbers here are the ones I am
+*Written 2026-08-05, ladder completed 2026-08-06, Finding 3 corrected and the aggregate
+re-score sized 2026-08-07. Companion to `prompt_parity_prereg.md`, `think_stub_prereg.md`
+and the running `parity_ladder_amendment.md` (14 addenda). Numbers here are the ones I am
 willing to defend; everything I am not willing to defend is listed in
 [What is not measured](#what-is-not-measured) rather than omitted.*
 
@@ -356,10 +356,18 @@ Rungs that scoring cannot rescue:
 Stated explicitly so none of it reads as covered:
 
 - **Every aggregate number in the campaign** — including the θ₀ = 119 and best-arm 77
-  that anchor the headline — is a floor of unknown size until re-scored
-  under the sandbox fix. That is the single largest outstanding item and it costs real
-  CPU-hours across all cells — I have not started it because it is a scope call for dpf,
-  not a detail.
+  that anchor the headline — is a floor until re-scored under the sandbox fix. The size
+  of that floor is no longer unknown: it is **~2–5 points per 100, one-way up, with no
+  reordering** (Addendum 14, counted from the `scoring_error` signature and calibrated on
+  the six ladder cells that have both passes). It remains the largest outstanding item
+  and costs real CPU-hours, so it is still a scope call for dpf — but it is now a
+  precision item, not a correctness one.
+- **A second scoring defect, unrelated to the collision and undiagnosed until 2026-08-07**:
+  every board cell — including the four scored with no concurrent job, which carry zero
+  collisions — loses 33–93 instances per 500 to transient `apptainer build failed` /
+  `sandbox verification failed`. It recovers on re-run at the same ~19% rate, but being
+  transient it will produce a fresh crop each pass, so a single re-score leaves ~1 point
+  per 100 of residue rather than zero.
 - **E's aggregate does not exist** (lost shard). E also has 3 patches discarded by the
   harness's multi-attempt aggregator (Addendum 5) with no repaired scoring run, so any
   E aggregate that does appear will be biased low. Base cells should be reported both
@@ -417,13 +425,33 @@ Stated explicitly so none of it reads as covered:
    is established by the matched ladder, which is already post-fix, compute-controlled
    and on identical instances; the board is now corroboration, not foundation, so the
    re-score is about *accurate absolute numbers* rather than about whether the
-   conclusion holds. And **the expected direction is upside, not risk**: the collision
-   only ever removed resolves, and on the ladder it was differentially anti-base (+18 to
-   F against +8 to B). If that asymmetry repeats on the 500-board, a clean re-score
-   *widens* the gap. That last part is a prior rather than a measurement — the proposed
-   mechanism (base's longer, more numerous runs expose more sandboxes to the race) is
-   plausible and untested, so it should not be quoted as a finding. Credit: framing from
-   the devil's-advocate agent.
+   conclusion holds. And **the size of the correction is now measured, not guessed**
+   (Addendum 14). A failed scoring writes a `scoring_error` into the report JSON, so
+   every affected instance can be counted from disk without re-running anything;
+   calibrating against the six ladder cells that have both a contaminated and a clean
+   pass gives a recovery rate of **19.2%** for collisions and **18.9%** for the separate
+   transient build failures, one-way (51 gained against 4 lost). Projected onto the
+   board:
+
+   | | now | projected clean |
+   |---|---|---|
+   | init_singlerun (θ₀) | 119 | ~127 |
+   | swezero (best arm) | 77 | ~90 |
+   | rebench / coderforge / scale | 70 / 48 / 35 | ~84 / ~66 / ~51 |
+   | soup_uniform4 | 50 | ~64 |
+
+   **Nothing reorders**: base still ≫ every arm, arm ordering holds, souping still loses
+   to its best member. Absolute levels rise ~2–5 points per 100. The projection agrees
+   with the clean ladder measured independently at n=100 (board base 25.4% against the
+   ladder's 24–28%; board best arm 18% against the ladder's 14–16%).
+
+   An earlier draft of this step predicted the re-score would be differentially
+   anti-base and would *widen* the gap, extrapolating from the ladder's +18 to F against
+   +8 to B. **That was backwards on the board** and is retracted: a sandbox is only built
+   for an instance that produced a patch, and on the board the arms patch ~100% of
+   instances against base's 72%, so the arms are the more exposed side. Projected gap
+   **42 → ~37** — it narrows slightly and does not close. Credit for pressing on the
+   original framing: the devil's-advocate agent.
 
    If it is run, **report per-cell gained/lost, not just the net** — "18 gained, 0 lost"
    is what distinguishes a floor-correction from a re-roll, and a re-roll would show
