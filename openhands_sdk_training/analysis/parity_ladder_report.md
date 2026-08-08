@@ -1,5 +1,9 @@
 # Prompt-parity / think-stub ladder — status report
 
+> **A consolidated, self-contained write-up of the whole campaign — including this ladder —
+> is in [`adp_v2_tech_report.md`](adp_v2_tech_report.md). Read that first; this document is
+> the ladder's working record and the primary source for its per-rung detail.**
+
 *Written 2026-08-05, ladder completed 2026-08-06, Finding 3 corrected and the aggregate
 re-score sized 2026-08-07. Companion to `prompt_parity_prereg.md`, `think_stub_prereg.md`
 and the running `parity_ladder_amendment.md` (14 addenda). Numbers here are the ones I am

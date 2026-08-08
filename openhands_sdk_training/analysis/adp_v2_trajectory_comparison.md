@@ -1,5 +1,8 @@
 # What SFT actually did to the agent: base vs swezero, trajectory-level
 
+> **The consolidated campaign write-up is [`adp_v2_tech_report.md`](adp_v2_tech_report.md)
+> (§5 covers this analysis). This document is the primary source for its per-arm detail.**
+
 **Question.** The v2 campaign established that SFT-lift inverts — the
 non-finetuned instruct base resolves more SWE-bench Verified instances than any
 arm. This asks the follow-up: *what changed in the agent's behaviour*, read off

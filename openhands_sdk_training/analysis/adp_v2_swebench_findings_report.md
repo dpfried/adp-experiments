@@ -1,5 +1,9 @@
 # ADP-v2 SWE-bench Verified — Findings Report (living doc)
 
+> **A consolidated, self-contained write-up of the whole campaign is in
+> [`adp_v2_tech_report.md`](adp_v2_tech_report.md). Read that first; this document is the
+> chronological findings log, kept for provenance and for the audit trail of retractions.**
+
 > _Public snapshot of the internal living findings doc. File paths to analysis scripts/results have been reduced to basenames (internal cluster paths removed)._
 
 
