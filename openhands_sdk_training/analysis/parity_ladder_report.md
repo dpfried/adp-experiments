@@ -1,0 +1,467 @@
+# Prompt-parity / think-stub ladder — status report
+
+> **A consolidated, self-contained write-up of the whole campaign — including this ladder —
+> is in [`adp_v2_tech_report.md`](adp_v2_tech_report.md). Read that first; this document is
+> the ladder's working record and the primary source for its per-rung detail.**
+
+*Written 2026-08-05, ladder completed 2026-08-06, Finding 3 corrected and the aggregate
+re-score sized 2026-08-07. Companion to `prompt_parity_prereg.md`, `think_stub_prereg.md`
+and the running `parity_ladder_amendment.md` (14 addenda). Numbers here are the ones I am
+willing to defend; everything I am not willing to defend is listed in
+[What is not measured](#what-is-not-measured) rather than omitted.*
+
+## Are the experiments done?
+
+**The ladder is: yes, complete and readable at n=100 on every rung.** One named piece is
+not, and it is a scope decision for dpf rather than unfinished work — the whole-campaign
+*aggregate* board still needs re-scoring under the [sandbox fix](#finding-1--the-scoring-harness-was-silently-losing-resolves-and-it-is-now-fixed)
+before any of its numbers can be quoted. State as of writing:
+
+| piece | state |
+|---|---|
+| rollouts A–F | complete |
+| rollout G (prefill-blocked base) | attempt 1 complete 100/100; **scored 2026-08-06 — G = 20/100** (see [Cell G](#cell-g--scored-and-still-not-a-causal-claim)) |
+| clean re-score, B and F | **complete** — the primary rung is readable |
+| clean re-score, A / C / D / E | **complete** (landed after this report was first written; see [The clean ladder](#the-clean-ladder-all-rungs)) |
+| clean re-score, aggregates (all cells) | **not started** — larger compute, **needs a decision from dpf** |
+| E aggregate | never scored at all (lost a shard to walltime) |
+
+None of the findings below depend on the aggregate re-score. Finding 3 was recomputed on
+2026-08-07 after I found that the census script had been reading the wrong rollout file
+(Addendum 12); the corrected numbers are the ones below, and no ladder score moved.
+
+---
+
+## Finding 1 — the scoring harness was silently losing resolves, and it is now fixed
+
+This is the most consequential thing in this report, because it changes numbers that
+were already circulating.
+
+`run_score_shards.sbatch` created Apptainer sandboxes under one **shared** root and
+pruned them **keyed by `instance_id` alone**. Every cell of a comparison scores the
+*same* SWE-bench instance set, so two concurrent scoring jobs shared one sandbox
+directory per instance and deleted it out from under each other mid-run. The failure
+mode is silent and one-directional: a vanished sandbox scores as **unresolved**.
+
+Measured, not theorised. Re-scoring byte-identical rollouts serially:
+
+| cell | scored with 20 concurrent tasks | scored alone | flips |
+|---|---|---|---|
+| B (arm, nostub) | 6/100 | **14/100** | 9 gained, 1 lost |
+| F (base, nostub) | 6/100 | **24/100** | 18 gained, **0 lost** |
+
+The pre-registered reading in Addendum 10 was "≥5 disagreements ⇒ H-collision, no
+matched rung may be quoted." Nine and eighteen. The fix (per-job sandbox subtree,
+`d748808`) was validated twice on B independently (13 and 14, vs 6 contaminated).
+
+Two things follow, and the second is the uncomfortable one:
+
+1. **The collision is non-uniform across cells.** F lost 18 instances to it, B lost 8,
+   and F lost *nothing* in the other direction. Addendum 8 had hoped instance-level
+   scoring effects would subtract out of a within-batch difference. They do not. That
+   hope is withdrawn.
+2. **Every number scored before the fix is a floor, depressed by an unknown,
+   cell-dependent amount.** That includes the aggregate ladder board, the arm totals,
+   the `init`-checkpoint 145/500, the souping numbers (soup 50 / pooled55k 46 /
+   pooled220k 54) and the aggregated F−B = +19. The identity gate confirms it from the
+   inside: B's aggregate says 8 resolved while B's *clean* attempt-1 subset — a strict
+   subset of the same rollouts — says 14, with only 3 instances ever retried. A subset
+   cannot beat its superset by 11 unless the superset's scoring is broken.
+
+Nothing here changes a *model*; it changes a *measurement*. But it changes it by more
+than the size of most effects this campaign was built to detect.
+
+## Finding 2 — the primary rung, at matched compute, on clean scoring
+
+The rung is F−B: **base vs arm, both with the `<think>\n\n</think>` stub removed,
+identical eval prompt**. Attempt-1-only, so one rollout per instance on both sides
+(the harness's critic otherwise gave base 2.32 rollouts/instance against the arm's
+1.04 — identical config, unequal compute, biasing *toward* base; Addendum 7).
+
+| version of the rung | n | B (arm) | F (base) | net | b/c | SE | σ | verdict |
+|---|---|---|---|---|---|---|---|---|
+| contaminated attempt-1 | 100 | 6 | 6 | +0 | 6/6 | 3.46 | 0.00 | uninformative (both cells damaged) |
+| **clean attempt-1** | 100 | **14** | **24** | **+10** | 17/7 | 4.90 | **2.04** | **significant** |
+| aggregate (unequal compute, contaminated, cross-batch) | 100 | 8 | 27 | +19 | 22/3 | 5.00 | 3.80 | not quotable |
+
+Paired McNemar; `b` = base-only resolves, `c` = arm-only, SE = √(b+c).
+
+The clean value lands in the pre-registered band **`2·SE … +19`** whose registered
+reading is: *the gap is real, and the aggregated form of it is partly inflated.* Both
+halves hold. Base-nostub beats the SFT arm by 10 instances per 100 at matched compute
+and a matched prompt — and the +19 that was on the board overstates that by about
+half, from the retry-compute asymmetry plus scoring damage.
+
+This is consistent with, and is now the cleanest available statement of, the finding
+already in memory: **SFT lift on this line is null-to-negative against a properly
+measured base.** It is not a new direction, it is the same direction measured properly.
+
+## Finding 3 — reasoning census: where reasoning actually happens
+
+dpf's question, prompted by DA's claim that blocking free text in G produces more tool
+calls. Three channels, which are **not disjoint** — for base-nostub the `<think>` tag
+sits at char 0 of the `thought` field, so channel (c) *is* channel (a), same text under
+two names. Reported nested.
+
+### Correction, 2026-08-07 — this section was recomputed
+
+The first version of this section read `output.jsonl`. That is the harness's **append
+log**, which omits attempt-1 rows for instances whose attempt terminated in an error and
+therefore silently substitutes attempt-2 transcripts on exactly the hard instances. The
+"62 instances present in every cell" in the old heading was a property of my glob, not of
+the experiment. The census now reads `output.critic_attempt_1.jsonl` — the same file
+every ladder rung was scored from. **No ladder number moved**; the numbers in this
+section did. Full accounting in Addendum 12.
+
+### Coverage first, because it changes the denominator
+
+All seven cells have 100 attempt-1 *rows*, but a row is not a transcript: where attempt 1
+crashed, the harness writes a stub carrying an `error` string and no history.
+
+| cell | rows | with a transcript | with a patch | resolved | resolved / patched | resolves with **no** transcript |
+|---|---|---|---|---|---|---|
+| A | 100 | 100 | 95 | 16 | 16.8% | 0 |
+| B | 100 | 100 | 97 | 14 | 14.4% | 0 |
+| C | 100 | 100 | 96 | 16 | 16.7% | 0 |
+| D | 100 | 100 | 98 | 16 | 16.3% | 0 |
+| E | 100 | **46** | 74 | 28 | 37.8% | **11** |
+| F | 100 | 100 | 82 | 24 | 29.3% | 0 |
+| G | 100 | **65** | 64 | 20 | 31.2% | **5** |
+
+Three things follow. The **ladder is unaffected** — all 100 instances were scored in
+every cell — and if anything its direction is conservative, since E reaches 28/100 having
+lost 54% of its conversations to crashes. The loss is **strongly condition-correlated**
+(E 54, G 35, everything else 0), so any unpaired cross-cell behavioural rate compares
+instance mixes as much as conditions; the honest paired census is **n = 33**. And a
+crashed conversation is **not** an empty one: the harness recovers `test_result.git_patch`,
+so **11 of E's 28 resolves and 5 of G's 20 have no transcript behind them** — a
+behavioural account of E's score reaches at most 17 of its 28 resolves.
+
+### Rollouts — paired on the 33 instances with a transcript in every cell
+
+Denominator: one `ActionEvent` (an assistant turn that called a tool). Rates are per
+transcript, not per row.
+
+| cell | model | template | act/transcript | free text | of which `<think>` | prose outside tag | `think()` | any |
+|---|---|---|---|---|---|---|---|---|
+| A | arm | stock | 97.3 | 0.0% | 0.0% | 0.0% | 2.2% | 2.3% |
+| B | arm | nostub | 93.3 | 0.0% | 0.0% | 0.0% | 3.1% | 3.1% |
+| C | arm | nostub+wrap | 85.0 | 0.0% | 0.0% | 0.0% | 3.4% | 3.4% |
+| D | arm | nostub+train-prompt | 70.5 | 0.0% | 0.0% | 0.0% | 3.6% | 3.6% |
+| E | base | stock | 275.2 | 48.1% | 0.0% | 48.1% | 8.0% | 51.7% |
+| F | base | nostub | 269.6 | 99.7% | 99.7% | 13.5% | 9.0% | 99.7% |
+| G | base | stock + prefill-block | 314.0 | 0.0% | 0.0% | 0.0% | **21.3%** | 21.3% |
+
+Raw counts matter here because a rounded 0.0% hid a real event: cell A's free text is
+**1 turn out of 3211**, not zero.
+
+| cell | free-text turns | `think()` calls | `think()`/transcript | free text/transcript |
+|---|---|---|---|---|
+| A | 1 | 72 | 2.18 | 0.03 |
+| B | 0 | 95 | 2.88 | 0.00 |
+| C | 0 | 96 | 2.91 | 0.00 |
+| D | 0 | 83 | 2.52 | 0.00 |
+| E | 4366 | 730 | 22.12 | 132.30 |
+| F | 8870 | 804 | 24.36 | 268.79 |
+| G | 0 | 2209 | **66.94** | 0.00 |
+
+**DA's claim is real, and on the corrected data it is channel substitution more cleanly
+than before.** E → G, paired on 33:
+
+- `think()` calls per transcript: 22.1 → 66.9 (**3.0×**, +44.8)
+- free-text turns per transcript: 132.3 → 0 (the block fired completely)
+- *total* actions per transcript: 275.2 → 314.0 (+38.8, **+14%**)
+- therefore **non-`think` actions per transcript: 253.1 → 247.1 (−2.4%, flat)**
+
+Almost exactly the whole increase in actions *is* the added `think()` calls; the rate of
+actual work is unchanged. Blocking prose does not make the model act more, it makes the
+model narrate into a tool instead of into `thought`. (The old version of this bullet
+said total actions were flat and non-`think` actions fell 14%. Both figures were
+artifacts of the append log; the conclusion they supported is the one that survives, now
+on a cleaner measurement.) Whether the re-routing helps is a *score* question, answered
+null and confounded (see [Cell G](#cell-g--scored-and-still-not-a-causal-claim)).
+
+Cell F is the other half of the story: the stub does not suppress reasoning, it
+**relocates** it. 99.7% of F's turns emit a `<think>` tag, **0.0% of them close it**,
+83% are non-empty, mean 117 characters inside — and prose *outside* the tag drops from
+E's 48.1% to 13.5%. The model pours its reasoning into an unclosed tag.
+
+Note also what the corrected denominator does to the base cells: conditional on producing
+a transcript at all, E, F and G do **266–268** actions per instance unpaired (275 / 270 /
+314 paired), against the arms' 71–97. The old numbers made E and G look like outliers at
+288–290 against F's 211; that spread was the append log mixing attempt lengths.
+
+### Training data — 3000 trajectories per arm
+
+Denominator: one assistant-**authored** turn. A structural asymmetry has to be stated
+alongside, or the comparison misleads: the ADP → LLaMA-Factory conversion emits role
+`function_call` as a bare JSON tool-call array with **no text field**, so a training
+turn *cannot* carry free text next to its tool call. Prose exists only as a separate
+`assistant` message.
+
+| dataset | traj | prose turns | of those, terminal | `think()` % of calls | traj with `think()` | `<think>` |
+|---|---|---|---|---|---|---|
+| coderforge_preview | 3000 | 2.8% | **100.0%** | 6.6% | 50.9% | **0** |
+| SWE-rebench (nebius) | 3000 | 3.0% | 99.8% | 4.3% | 40.8% | **0** |
+| SWE-Zero (nvidia) | 3000 | 2.5% | **100.0%** | 7.1% | 56.6% | **0** |
+| scale_swe_distilled | 3000 | 5.0% | 51.4% | **0.0%** | **0.0%** | **0** |
+| swe-gym | 199 | 8.1% | 31.5% | **0.0%** | **0.0%** | **0** |
+
+**Re-run on the full datasets, 2026-08-07** (79.9k trajectories per arm, ~320k total,
+not a 3000-trajectory sample). The sampled figures above hold; `swe-gym` is not in the
+subsets directory and remains sampled-only:
+
+| dataset | traj | prose turns | of those, terminal | `think()` % of calls | traj with `think()` | `<think>` |
+|---|---|---|---|---|---|---|
+| coderforge_preview | 79,890 | 2.7% | **100.0%** | 6.5% | 50.8% | **0** |
+| SWE-rebench (nebius) | 79,887 | 3.0% | 99.9% | 4.3% | 40.4% | **0** |
+| SWE-Zero (nvidia) | 79,874 | 2.3% | **100.0%** | 7.1% | 58.4% | **0** |
+| scale_swe_distilled | 79,900 | 4.6% | 58.4% | **0.0%** | **0.0%** | **0** |
+
+So the `<think>` = 0 claim is no longer a sampling statement: **zero occurrences in
+4.66M assistant-authored turns across all four training arms.**
+
+The three answers to dpf's question:
+
+- **(a) free text before a tool call.** Structurally absent from the training data — and
+  what prose exists is ~100% *terminal* (the closing summary), so mid-trajectory
+  reasoning prose is ≈ 0. The arms reproduce this exactly: 1 free-text turn in 3211
+  paired (1 in 10,541 unpaired) across all four arm cells.
+  The behaviour is **inherited from the demonstrations**, not a template artifact.
+- **(b) `think()`.** The one channel the data does teach — 4.3–7.1% of tool calls,
+  ~0.6–1.0 calls/trajectory, in 41–57% of trajectories. The arms reproduce it at
+  2.2–3.6% of calls, i.e. at roughly half the demonstrated rate. Note `scale_swe_distilled`
+  and `swe-gym` contain **zero** `think()` calls.
+- **(c) `<think>` tag.** **Zero occurrences in all five training datasets.** So F's
+  99.7% tag rate is entirely a serving-template effect with no support in training —
+  which is exactly why the B−A rung (stub on/off, arm side) is a **mechanistic null**:
+  native `<think>` is 0/100 either way, because the arm never learned to use it.
+
+## The clean ladder, all rungs
+
+All six cells re-scored under the sandbox fix, attempt-1 only, paired McNemar on
+n=100. **Nothing is pending; this is the final ladder.**
+
+| rung | tests | n | low | high | net | b/c | SE | σ | verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| **F−B** | base vs arm, both nostub | 100 | B 14 | F 24 | **+10** | 17/7 | 4.90 | **2.04** | **significant** |
+| **E−A** | base vs arm, both stock | 100 | A 16 | E 28 | **+12** | 21/9 | 5.48 | **2.19** | **significant** |
+| A−B | the stub, arm side | 100 | B 14 | A 16 | +2 | 9/7 | 4.00 | 0.50 | null |
+| C−B | the wrapper and path | 100 | B 14 | C 16 | +2 | 8/6 | 3.74 | 0.53 | null |
+| D−C | prohibition + phase list | 100 | C 16 | D 16 | **+0** | 5/5 | 3.16 | 0.00 | null |
+| E−F | the stub, base side | 100 | F 24 | E 28 | +4 | 13/9 | 4.69 | 0.85 | null |
+| **C−A** (registered **L1**) | all format rungs jointly | 100 | A 16 | C 16 | **+0** | 7/7 | 3.74 | 0.00 | **L1 PASSES** |
+| G−E | prose blocked, base | 100 | G 20 | E 28 | −8 | 6/14 | 4.47 | −1.79 | null (and confounded — see below) |
+
+Three things fall out, and one of them corrects an earlier claim of mine.
+
+**L1 passes at the extreme.** The registered bound was `|C − A| ≤ 6/100`; the measured
+value is **0**, with the resolved sets differing on only 7 instances each way. B and C
+between them remove every non-semantic train/eval format difference for this arm, so
+this is the cleanest available test of "the arms are being scored unfairly by serving
+format" — and the answer is no. The registered falsifier (C − A ≥ +6, which would have
+forced a re-measurement of every arm before further curation) does not fire. Curation
+work does not need to wait on a format re-measurement.
+
+**Every format rung is null and the model rung is not.** A−B, C−B, D−C and E−F all sit
+under 1σ — and two of them (C−A, D−C) are *exactly* zero — while base-vs-arm is
+significant on *both* template conditions (+10 nostub, +12 stock). The entire arm side
+of the ladder spans 14–16 resolved out of 100 across four different prompt/template
+conditions; the base side sits at 24–28. Per the attribution rule fixed in advance, the score difference is
+attributed to the smallest rung that produces it — and no format rung produces one.
+The gap is the model, not the prompt.
+
+**Cross-check on the two significant rungs.** +10 and +12 per 100 sit alongside the
+500-instance board's +8.4pp (base 119 vs best arm 77) — a separate measurement on 5×
+the instances, a different scoring pass and a different rollout campaign. Two
+independent instruments agreeing to within ~3pp is the reason to believe the matched
+result is not a shard artifact. Before this ladder, base ≫ arm was only ever a
+cross-harness claim carrying confounds; it is now within one harness, on the same
+instances, with compute controlled, and it survives.
+
+**I have to withdraw "removing the stub helped base."** That claim rested on F's
+contaminated aggregate (27) against an E aggregate that was never scored. Clean and
+matched, the stub rung on the base side is **E 28 vs F 24, +4, 0.85σ — null, with the
+point estimate now pointing the other way.** The substantive part of the earlier
+finding survives untouched (the stub collapses base's cap-hit rate, 31–35% → 0%, and
+relocates its reasoning into an unclosed tag), but the *score* consequence does not.
+`think_stub_prereg.md` §2 predicted removing the stub would hurt base; the honest
+reading is now "no measurable score effect either way," not "it helped."
+
+**And the mechanism is visible in the two cells, which kills a stronger claim than
+mine.** E hits the 500-iteration cap on 35% of instances and F on 0%. The direction of
+the per-completion effect holds: the stub trades completion rate for per-completion
+quality, and un-capping base adds *finishers*, not *solves*.
+
+*(Arithmetic corrected 2026-08-07 — the number I published for this was wrong.* I had
+written "E resolves 28 of the ~65 instances it completes (**43%**) against F's 24 of 100
+(**24%**)". That divides E's **total** 28 resolves by its **non-capped** 65 — but 9 of
+those 28 resolves come from capped instances, so the numerator includes what the
+denominator excludes. Decomposed properly, E resolves **19/65 = 29.2%** of its non-capped
+instances against F's **24/100 = 24.0%**, and G **17/82 = 20.7%**. Same ordering for
+E vs F, but the gap is ~5pp, not ~19pp, and **G now sits below F rather than tied with
+it.** The independent resolves-per-patched denominator gives E 37.8 / F 29.3 / G 31.2%.
+The qualitative claim survives on every denominator and all of them sit above the arms'
+14–17%; the *effect size* is much smaller than I first reported. See Addendum 12.)*
+
+That refutes the separate claim — raised in review, and which
+I did not carry into this report but which did reach memory — that **θ₀ = 119/500 is a
+floor because the stub gags base into caps and costs it resolves**. The cap-hits the
+stub causes do not cost base resolves; 119 is base's rate, not a floor beneath which a
+truer value hides. (Distinct from, and not to be merged with, the sandbox-collision
+floors in Finding 1, which stand. Also distinct from the unattributable-26/119
+provenance question, which is about the board run, not the stub.) Credit where due: this
+concession originated with the devil's-advocate agent, against their own earlier
+position.
+
+### Cell G — scored, and still not a causal claim
+
+G was staged by the cell-G agent and I initially declined to score it, on the argument
+that its score is uninterpretable in either direction. That was the wrong call, and not
+because the argument is wrong: it costs two CPU shards, it completes a 7-cell ladder on
+one footing, and an absent number gets filled in by guesswork. Scored on the identical
+100-instance set with the sandbox fix: **G = 20/100, G−E = −8 at 1.79σ — null.**
+
+It does not clear the registered 2·SE bar, so the score half of the prose-blocking
+question is simply **null**, and the sign cannot be attributed either. The two confounds
+that agent-b17cac1e pre-registered and measured point in opposite directions and are
+unequal: the iteration cap **favours** G (22 of E's 35 cap-hitters run to completion
+under G; 35.0% → 18.0%, exact McNemar p = 0.0115), while malformed tool calls
+(1.94% → 4.66%, p = 0.0021) and `AgentErrorEvent`s (4 → 11, p = 0.0070) **disfavour** it.
+A loss is what the malformed-call confound predicts, so it is not evidence about
+reasoning content.
+
+**What is worth noting is the direction, because it repeats.** Both manipulations that
+reduce base's cap-hit rate score *lower* than the stock stub cell: E 28 → F 24 (nostub,
+caps 35% → 0%) and E 28 → G 20 (prose blocked, caps 35% → 18%). Per-completion, on the corrected cap
+denominator: **E 29.2% (19/65), F 24.0% (24/100), G 20.7% (17/82)**; on the independent
+resolves-per-patched denominator, **E 37.8%, F 29.3%, G 31.2%**. E leads on both. Two independent
+individually null, both pointing the same way: **base's resolve count is not limited by
+running out of iterations.** Un-capping it adds finishers, not solves. That is the same
+conclusion the E−F rung reached, arrived at by a different route.
+
+G also had *more* usable attempt-1 coverage than E (65 transcripts vs 46) and still
+scored lower, which is one more reason not to read G's deficit as a coverage artifact.
+
+The clean deliverables from G remain the ones its own agent identified — the block fired
+completely (0 of 17,288 action events carry prose, vs E's 5,929/12,315 = 48.14%) and the
+relocation is decisive (narration → `think()`, +10.8pp, p = 1.3e-7) — not the score.
+
+Rungs that scoring cannot rescue:
+
+| rung | why not |
+|---|---|
+| F−E as a *compute-matched* claim | the registered L3 placebo fails (cap-hit E 31% vs F 0%; 35% vs 0% matched) and the aggregate form was never compute-matched — peer measured critic rejections 71/100 in F vs 15/100 in E. The a1x rung above sidesteps this by using attempt 1 only |
+| D−C | **confounded by construction** — D drops 3 phases as well as changing the prompt, so its exact-zero bundles two manipulations that could in principle cancel. Unbundling needs new rollouts |
+| G−E on score | **downgraded, do not wait for it** — see below |
+
+## What is not measured
+
+Stated explicitly so none of it reads as covered:
+
+- **Every aggregate number in the campaign** — including the θ₀ = 119 and best-arm 77
+  that anchor the headline — is a floor until re-scored under the sandbox fix. The size
+  of that floor is no longer unknown: it is **~2–5 points per 100, one-way up, with no
+  reordering** (Addendum 14, counted from the `scoring_error` signature and calibrated on
+  the six ladder cells that have both passes). It remains the largest outstanding item
+  and costs real CPU-hours, so it is still a scope call for dpf — but it is now a
+  precision item, not a correctness one.
+- **A second scoring defect, unrelated to the collision and undiagnosed until 2026-08-07**:
+  every board cell — including the four scored with no concurrent job, which carry zero
+  collisions — loses 33–93 instances per 500 to transient `apptainer build failed` /
+  `sandbox verification failed`. It recovers on re-run at the same ~19% rate, but being
+  transient it will produce a fresh crop each pass, so a single re-score leaves ~1 point
+  per 100 of residue rather than zero.
+- **E's aggregate does not exist** (lost shard). E also has 3 patches discarded by the
+  harness's multi-attempt aggregator (Addendum 5) with no repaired scoring run, so any
+  E aggregate that does appear will be biased low. Base cells should be reported both
+  as-harness and repaired, labelled, never swapped silently.
+- **G's score exists but carries no causal weight** (20/100, G−E null at 1.79σ). Its two
+  confounds are of opposite sign and unequal size, so no direction is clean. Quote it as
+  a descriptive cell, never as evidence about reasoning content. Details above.
+- **The crash asymmetry is now explained** (was listed here as unexplained; resolved
+  2026-08-07 on a hypothesis from the devil's-advocate agent). It is not an independent
+  gremlin, it is the **depth asymmetry hitting per-run ceilings**. Decomposed:
+
+  | cell | crashed | 500-iter cap | wallclock 14400s | ENOSPC | generic |
+  |---|---|---|---|---|---|
+  | E | 54 | **35** | 6 | 3 | 10 |
+  | G | 35 | **18** | 0 | 2 | 15 |
+  | F, A–D | 0 | 0 | 0 | 0 | 0 |
+
+  81% of E's and 57% of G's crashes are resource-ceiling failures. The arms run ~62–97
+  actions and never approach a ceiling; base runs ~270. And within a cell the crashed
+  instances are the *deeper* ones — on later attempts they take a median **304** actions
+  vs **223** for the instances that completed at attempt 1 (E), **333** vs **271** (G).
+  Two side effects worth keeping: this **confirms agent-b17cac1e's cap-hit rates exactly**
+  (35 / 0 / 18 per 100, re-derived independently from the attempt-1 files, so the earlier
+  "inherited and unaudited" caveat is withdrawn), and it makes the matched gap a floor —
+  E's completed runs resolve at 37% against 20% for its crashed ones, so absent the
+  crashes E would land nearer 37/100 than 28, widening E−A (+12) and E−F (+4) by up to
+  ~9. That estimate is an upper bound, since the crashed instances are the deeper and
+  probably harder ones. The arms eat none of this handicap.
+- **The generic `Conversation run failed` residue is still untraced** — 10 in E, 15 in G,
+  with no resource signature. Small enough not to gate anything, and it works against the
+  cells that win, but it is the one part of the crash story without a cause.
+- **The channel-blocking ladder should stop here**, on an argument from the
+  devil's-advocate agent that I accept: blocking one surface reroutes reasoning to the
+  next open one, and the remaining surfaces are undetectable by construction (free-text
+  tool arguments, identifier choice, whitespace and ordering, which files get opened).
+  So each drop-X rung can only ever establish "reasoning must live in some *other*
+  channel," never "reasoning off," and the regress does not terminate in a channel that
+  can be proven closed. A drop-`think()` rung would hit the same wall. The content
+  question needs a different design — a model with no reasoning channel by
+  training/RL, or an information-theoretic probe — not more ablation rungs.
+- **F−E cannot be rescued by re-scoring** — its problem is unequal compute and a failed
+  placebo in the *rollouts*, not the scoring.
+- **D−C needs new rollouts** to unbundle. Not launched; GPU spend is dpf's call.
+- No claim here rests on `<think>`-tag semantics being intended behaviour: the tag is
+  unclosed 100% of the time in F, which is a serving-template artifact.
+
+## Recommended next steps, in order
+
+1. **Decide** whether to re-score the aggregate board under the fix. This is now the
+   only thing standing between the campaign and a quotable set of numbers — until it
+   happens the honest form of every aggregate is "≥ X". It is CPU-only but across all
+   cells, so it is a scope call rather than a detail.
+
+   Two things should inform that call. **The verdict does not depend on it.** Base ≫ arm
+   is established by the matched ladder, which is already post-fix, compute-controlled
+   and on identical instances; the board is now corroboration, not foundation, so the
+   re-score is about *accurate absolute numbers* rather than about whether the
+   conclusion holds. And **the size of the correction is now measured, not guessed**
+   (Addendum 14). A failed scoring writes a `scoring_error` into the report JSON, so
+   every affected instance can be counted from disk without re-running anything;
+   calibrating against the six ladder cells that have both a contaminated and a clean
+   pass gives a recovery rate of **19.2%** for collisions and **18.9%** for the separate
+   transient build failures, one-way (51 gained against 4 lost). Projected onto the
+   board:
+
+   | | now | projected clean |
+   |---|---|---|
+   | init_singlerun (θ₀) | 119 | ~127 |
+   | swezero (best arm) | 77 | ~90 |
+   | rebench / coderforge / scale | 70 / 48 / 35 | ~84 / ~66 / ~51 |
+   | soup_uniform4 | 50 | ~64 |
+
+   **Nothing reorders**: base still ≫ every arm, arm ordering holds, souping still loses
+   to its best member. Absolute levels rise ~2–5 points per 100. The projection agrees
+   with the clean ladder measured independently at n=100 (board base 25.4% against the
+   ladder's 24–28%; board best arm 18% against the ladder's 14–16%).
+
+   An earlier draft of this step predicted the re-score would be differentially
+   anti-base and would *widen* the gap, extrapolating from the ladder's +18 to F against
+   +8 to B. **That was backwards on the board** and is retracted: a sandbox is only built
+   for an instance that produced a patch, and on the board the arms patch ~100% of
+   instances against base's 72%, so the arms are the more exposed side. Projected gap
+   **42 → ~37** — it narrows slightly and does not close. Credit for pressing on the
+   original framing: the devil's-advocate agent.
+
+   If it is run, **report per-cell gained/lost, not just the net** — "18 gained, 0 lost"
+   is what distinguishes a floor-correction from a re-roll, and a re-roll would show
+   losses in both directions.
+2. Teach `ladder_readout.py` to prefer the `_a1x` suffix and print which scoring pass it
+   used — it still defaults to the contaminated `_a1`.
+4. **Do not** spend GPU on further channel-blocking rungs; G's score is in and settles nothing about reasoning content, by construction.
+5. Do not spend GPU on unbundling D−C unless the prompt question becomes decision-
+   relevant: every format rung is null, so the prior that it matters is now low.

@@ -33,7 +33,7 @@ under `merged.report.json`. Board (raw /500):
      assistant=prose-state-summary pair, `generation=openhands_sdk_condensation_prompt`), which train
      *summarize-and-conclude* rather than *act*. Two-sided: could be a genuine context-management skill
      SBV pass@1 doesn't score, or net dilution.
-  2. **NO success/outcome filtering.** The records carry no resolved/reward/pass field, so unresolved
+  2. **NO success/outcome filtering.** ⚠️ **REFUTED 2026-08-04 (prereg §18)** — coderforge and rebench were success-filtered upstream; see note below. The records carry no resolved/reward/pass field, so unresolved
      and looping trajectories are imitated wholesale. Only ~39% of trajectory records even end at a
      real finish (the rest are mid-task segments).
 - Ruled OUT as causes (do not re-litigate): truncation (0% at the 32768 cutoff), format/template
